@@ -1,0 +1,17 @@
+name = "catalog-maker-pro"
+main = "worker.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+[vars]
+APP_ENV = "production"
+
+# Configure sensitive AI keys via Wrangler secrets (never commit real secrets):
+# npx wrangler secret put GEMINI_API_KEY
+# npx wrangler secret put OPENAI_API_KEY
+# npx wrangler secret put DEEPSEEK_API_KEY
+# npx wrangler secret put XAI_API_KEY

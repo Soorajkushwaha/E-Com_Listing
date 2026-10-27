@@ -1,0 +1,6 @@
+{
+  "name": "Catalog Maker Pro",
+  "description": "Full-stack B2B product catalog builder, Excel catalog importer, AI theme designer, and bulk order & quotation management platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

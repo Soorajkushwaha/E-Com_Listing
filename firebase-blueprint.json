@@ -1,0 +1,616 @@
+{
+  "entities": {
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted administrator registry document keyed by user UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Administrator Firebase UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified administrator email address",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Product catalog record shared between Catalog Builder and Public Shop.",
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string",
+          "description": "Unique stock keeping unit identifier",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Primary product name",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "heading": {
+          "type": "string",
+          "description": "Catalog display heading",
+          "minLength": 0,
+          "maxLength": 200
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Short product subtitle",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed product description",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "brand": {
+          "type": "string",
+          "description": "Brand name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Primary image URL or SVG data URI",
+          "minLength": 0,
+          "maxLength": 10000
+        },
+        "sellingPrice": {
+          "type": "number",
+          "description": "Current selling price in INR"
+        },
+        "mrp": {
+          "type": "number",
+          "description": "Maximum retail price in INR"
+        },
+        "badge": {
+          "type": "string",
+          "description": "Promotional or seasonal badge text",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "campaign": {
+          "type": "string",
+          "description": "Associated campaign slug",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "description": "Publication visibility status",
+          "enum": ["active", "draft", "archived"]
+        },
+        "stockStatus": {
+          "type": "string",
+          "description": "Inventory availability status",
+          "enum": ["in_stock", "low_stock", "made_to_order", "out_of_stock"]
+        },
+        "rating": {
+          "type": "number",
+          "description": "Average product rating from 0 to 5"
+        },
+        "ratingCount": {
+          "type": "number",
+          "description": "Number of customer ratings"
+        },
+        "amazonUrl": {
+          "type": "string",
+          "description": "Amazon marketplace purchase link",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "flipkartUrl": {
+          "type": "string",
+          "description": "Flipkart marketplace purchase link",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "meeshoUrl": {
+          "type": "string",
+          "description": "Meesho marketplace purchase link",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "websiteUrl": {
+          "type": "string",
+          "description": "Direct brand store purchase link",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Whether product is featured in catalog hero/spotlight"
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Numeric display sort order"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of administrator who created the record",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "sku",
+        "name",
+        "category",
+        "brand",
+        "sellingPrice",
+        "mrp",
+        "status",
+        "stockStatus",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CatalogTheme": {
+      "title": "CatalogTheme",
+      "description": "Visual theme configuration generated via AI Theme Designer or preset.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Theme display name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "primaryColor": {
+          "type": "string",
+          "description": "Primary brand hex color",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "secondaryColor": {
+          "type": "string",
+          "description": "Secondary accent hex color",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "backgroundColor": {
+          "type": "string",
+          "description": "Page canvas background hex color",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "surfaceColor": {
+          "type": "string",
+          "description": "Card surface hex color",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "textColor": {
+          "type": "string",
+          "description": "Primary text hex color",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "accentColor": {
+          "type": "string",
+          "description": "CTA and badge accent hex color",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "headingFont": {
+          "type": "string",
+          "description": "Display font family name",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "bodyFont": {
+          "type": "string",
+          "description": "Body font family name",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "cardLayout": {
+          "type": "string",
+          "description": "Product card visual style",
+          "enum": ["editorial", "minimal", "bordered", "elevated"]
+        },
+        "borderRadius": {
+          "type": "string",
+          "description": "Border radius token",
+          "enum": ["none", "sm", "md", "lg", "xl"]
+        },
+        "buttonStyle": {
+          "type": "string",
+          "description": "Primary CTA button treatment",
+          "enum": ["solid", "outline", "soft"]
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Whether theme can be read by public catalog pages"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "name",
+        "primaryColor",
+        "secondaryColor",
+        "backgroundColor",
+        "surfaceColor",
+        "textColor",
+        "accentColor",
+        "headingFont",
+        "bodyFont",
+        "cardLayout",
+        "borderRadius",
+        "buttonStyle",
+        "isPublic",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Campaign": {
+      "title": "Campaign",
+      "description": "Seasonal or B2B catalog campaign with dedicated shareable URL slug.",
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string",
+          "description": "URL-friendly campaign identifier",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Campaign title",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "description": {
+          "type": "string",
+          "description": "Campaign promotional copy",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "bannerTitle": {
+          "type": "string",
+          "description": "Hero banner headline",
+          "minLength": 0,
+          "maxLength": 200
+        },
+        "bannerSubtitle": {
+          "type": "string",
+          "description": "Hero banner subtitle",
+          "minLength": 0,
+          "maxLength": 400
+        },
+        "startDate": {
+          "type": "string",
+          "description": "ISO start date string",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "endDate": {
+          "type": "string",
+          "description": "ISO end date string",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "themeId": {
+          "type": "string",
+          "description": "Associated theme ID",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "description": "Campaign active status",
+          "enum": ["active", "inactive"]
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "themeId",
+        "status",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BulkOrder": {
+      "title": "BulkOrder",
+      "description": "B2B bulk order inquiry and quotation lifecycle record containing customer PII.",
+      "type": "object",
+      "properties": {
+        "orderRef": {
+          "type": "string",
+          "description": "Human-readable order reference ID",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Creator or administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer full name",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "companyName": {
+          "type": "string",
+          "description": "Business or company name",
+          "minLength": 0,
+          "maxLength": 150
+        },
+        "mobile": {
+          "type": "string",
+          "description": "Customer mobile number",
+          "minLength": 7,
+          "maxLength": 25
+        },
+        "whatsapp": {
+          "type": "string",
+          "description": "Customer WhatsApp number",
+          "minLength": 7,
+          "maxLength": 25
+        },
+        "email": {
+          "type": "string",
+          "description": "Customer email address",
+          "minLength": 0,
+          "maxLength": 254
+        },
+        "address": {
+          "type": "string",
+          "description": "Full delivery street address",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "city": {
+          "type": "string",
+          "description": "Delivery city",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "state": {
+          "type": "string",
+          "description": "Delivery state",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "pinCode": {
+          "type": "string",
+          "description": "Postal PIN code",
+          "minLength": 4,
+          "maxLength": 16
+        },
+        "gstNumber": {
+          "type": "string",
+          "description": "Optional GSTIN",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "campaignSlug": {
+          "type": "string",
+          "description": "Event or campaign identifier",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "expectedDeliveryDate": {
+          "type": "string",
+          "description": "Requested delivery date",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "preferredContact": {
+          "type": "string",
+          "description": "Preferred contact channel",
+          "enum": ["whatsapp", "phone", "email"]
+        },
+        "requirements": {
+          "type": "string",
+          "description": "Customer customization or packaging notes",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "itemsSummary": {
+          "type": "string",
+          "description": "Human-readable summary of requested SKUs and quantities",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "totalQuantity": {
+          "type": "number",
+          "description": "Total requested units across items"
+        },
+        "estimatedAmount": {
+          "type": "number",
+          "description": "Initial catalog price estimate in INR"
+        },
+        "finalAmount": {
+          "type": "number",
+          "description": "Final quoted total in INR including GST and shipping"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current order lifecycle status",
+          "enum": [
+            "New Request",
+            "Contact Customer",
+            "Quote Prepared",
+            "Awaiting Customer Approval",
+            "Order Confirmed",
+            "Awaiting Payment",
+            "Paid",
+            "Processing",
+            "Dispatched",
+            "Delivered",
+            "Cancelled",
+            "Rejected"
+          ]
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Payment verification status",
+          "enum": ["unpaid", "link_sent", "paid", "refunded"]
+        },
+        "paymentLink": {
+          "type": "string",
+          "description": "Manual payment link sent after order confirmation",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "transactionRef": {
+          "type": "string",
+          "description": "Verified payment transaction reference",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "courierName": {
+          "type": "string",
+          "description": "Logistics partner name",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "trackingNumber": {
+          "type": "string",
+          "description": "Shipment AWB or tracking number",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "internalNotes": {
+          "type": "string",
+          "description": "Private administrator notes",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Order creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "orderRef",
+        "ownerId",
+        "customerName",
+        "mobile",
+        "whatsapp",
+        "address",
+        "city",
+        "state",
+        "pinCode",
+        "preferredContact",
+        "itemsSummary",
+        "totalQuantity",
+        "estimatedAmount",
+        "finalAmount",
+        "status",
+        "paymentStatus",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted administrator lookup table."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Shared product catalog collection."
+    },
+    "/themes/{themeId}": {
+      "schema": { "$ref": "#/entities/CatalogTheme" },
+      "description": "Saved catalog themes and presets."
+    },
+    "/campaigns/{campaignId}": {
+      "schema": { "$ref": "#/entities/Campaign" },
+      "description": "Seasonal and B2B catalog campaigns."
+    },
+    "/bulkOrders/{orderId}": {
+      "schema": { "$ref": "#/entities/BulkOrder" },
+      "description": "Customer bulk order requests and quotations (contains PII, isolated to owner/admin)."
+    }
+  }
+}

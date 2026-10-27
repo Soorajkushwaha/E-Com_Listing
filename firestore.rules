@@ -1,0 +1,276 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 & Phase 4.1: Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isVerifiedUser() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'simple.sooraj@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Validation Blueprints
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'createdAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+          'sku', 'name', 'category', 'brand', 'sellingPrice', 'mrp',
+          'status', 'stockStatus', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'sku', 'name', 'heading', 'subtitle', 'description', 'category', 'brand',
+          'imageUrl', 'sellingPrice', 'mrp', 'badge', 'campaign', 'status', 'stockStatus',
+          'rating', 'ratingCount', 'amazonUrl', 'flipkartUrl', 'meeshoUrl', 'websiteUrl',
+          'featured', 'sortOrder', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 64 && data.sku.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+        (!('heading' in data) || (data.heading is string && data.heading.size() <= 200)) &&
+        (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 300)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 100 &&
+        data.brand is string && data.brand.size() >= 1 && data.brand.size() <= 100 &&
+        (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 10000)) &&
+        data.sellingPrice is number && data.sellingPrice >= 0 && data.sellingPrice <= 100000000 &&
+        data.mrp is number && data.mrp >= 0 && data.mrp <= 100000000 &&
+        (!('badge' in data) || (data.badge is string && data.badge.size() <= 60)) &&
+        (!('campaign' in data) || (data.campaign is string && data.campaign.size() <= 100)) &&
+        data.status in ['active', 'draft', 'archived'] &&
+        data.stockStatus in ['in_stock', 'low_stock', 'made_to_order', 'out_of_stock'] &&
+        (!('rating' in data) || (data.rating is number && data.rating >= 0 && data.rating <= 5)) &&
+        (!('ratingCount' in data) || (data.ratingCount is number && data.ratingCount >= 0 && data.ratingCount <= 10000000)) &&
+        (!('amazonUrl' in data) || (data.amazonUrl is string && data.amazonUrl.size() <= 500)) &&
+        (!('flipkartUrl' in data) || (data.flipkartUrl is string && data.flipkartUrl.size() <= 500)) &&
+        (!('meeshoUrl' in data) || (data.meeshoUrl is string && data.meeshoUrl.size() <= 500)) &&
+        (!('websiteUrl' in data) || (data.websiteUrl is string && data.websiteUrl.size() <= 500)) &&
+        (!('featured' in data) || (data.featured is bool)) &&
+        (!('sortOrder' in data) || (data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 100000)) &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCatalogTheme(data) {
+      return data.keys().hasAll([
+          'name', 'primaryColor', 'secondaryColor', 'backgroundColor', 'surfaceColor',
+          'textColor', 'accentColor', 'headingFont', 'bodyFont', 'cardLayout',
+          'borderRadius', 'buttonStyle', 'isPublic', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'name', 'primaryColor', 'secondaryColor', 'backgroundColor', 'surfaceColor',
+          'textColor', 'accentColor', 'headingFont', 'bodyFont', 'cardLayout',
+          'borderRadius', 'buttonStyle', 'isPublic', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.primaryColor is string && data.primaryColor.size() >= 4 && data.primaryColor.size() <= 20 &&
+        data.secondaryColor is string && data.secondaryColor.size() >= 4 && data.secondaryColor.size() <= 20 &&
+        data.backgroundColor is string && data.backgroundColor.size() >= 4 && data.backgroundColor.size() <= 20 &&
+        data.surfaceColor is string && data.surfaceColor.size() >= 4 && data.surfaceColor.size() <= 20 &&
+        data.textColor is string && data.textColor.size() >= 4 && data.textColor.size() <= 20 &&
+        data.accentColor is string && data.accentColor.size() >= 4 && data.accentColor.size() <= 20 &&
+        data.headingFont is string && data.headingFont.size() >= 1 && data.headingFont.size() <= 80 &&
+        data.bodyFont is string && data.bodyFont.size() >= 1 && data.bodyFont.size() <= 80 &&
+        data.cardLayout in ['editorial', 'minimal', 'bordered', 'elevated'] &&
+        data.borderRadius in ['none', 'sm', 'md', 'lg', 'xl'] &&
+        data.buttonStyle in ['solid', 'outline', 'soft'] &&
+        data.isPublic is bool &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCampaign(data) {
+      return data.keys().hasAll([
+          'slug', 'name', 'themeId', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'slug', 'name', 'description', 'bannerTitle', 'bannerSubtitle',
+          'startDate', 'endDate', 'themeId', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 100 && data.slug.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 150 &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+        (!('bannerTitle' in data) || (data.bannerTitle is string && data.bannerTitle.size() <= 200)) &&
+        (!('bannerSubtitle' in data) || (data.bannerSubtitle is string && data.bannerSubtitle.size() <= 400)) &&
+        (!('startDate' in data) || (data.startDate is string && data.startDate.size() <= 40)) &&
+        (!('endDate' in data) || (data.endDate is string && data.endDate.size() <= 40)) &&
+        data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 100 &&
+        data.status in ['active', 'inactive'] &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBulkOrder(data) {
+      return data.keys().hasAll([
+          'orderRef', 'ownerId', 'customerName', 'mobile', 'whatsapp',
+          'address', 'city', 'state', 'pinCode', 'preferredContact',
+          'itemsSummary', 'totalQuantity', 'estimatedAmount', 'finalAmount',
+          'status', 'paymentStatus', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orderRef', 'ownerId', 'customerName', 'companyName', 'mobile', 'whatsapp',
+          'email', 'address', 'city', 'state', 'pinCode', 'gstNumber', 'campaignSlug',
+          'expectedDeliveryDate', 'preferredContact', 'requirements', 'itemsSummary',
+          'totalQuantity', 'estimatedAmount', 'finalAmount', 'status', 'paymentStatus',
+          'paymentLink', 'transactionRef', 'courierName', 'trackingNumber',
+          'internalNotes', 'createdAt', 'updatedAt'
+        ]) &&
+        data.orderRef is string && data.orderRef.size() >= 3 && data.orderRef.size() <= 64 && data.orderRef.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 150 &&
+        (!('companyName' in data) || (data.companyName is string && data.companyName.size() <= 150)) &&
+        data.mobile is string && data.mobile.size() >= 7 && data.mobile.size() <= 25 &&
+        data.whatsapp is string && data.whatsapp.size() >= 7 && data.whatsapp.size() <= 25 &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 254)) &&
+        data.address is string && data.address.size() >= 1 && data.address.size() <= 500 &&
+        data.city is string && data.city.size() >= 1 && data.city.size() <= 100 &&
+        data.state is string && data.state.size() >= 1 && data.state.size() <= 100 &&
+        data.pinCode is string && data.pinCode.size() >= 4 && data.pinCode.size() <= 16 &&
+        (!('gstNumber' in data) || (data.gstNumber is string && data.gstNumber.size() <= 30)) &&
+        (!('campaignSlug' in data) || (data.campaignSlug is string && data.campaignSlug.size() <= 100)) &&
+        (!('expectedDeliveryDate' in data) || (data.expectedDeliveryDate is string && data.expectedDeliveryDate.size() <= 40)) &&
+        data.preferredContact in ['whatsapp', 'phone', 'email'] &&
+        (!('requirements' in data) || (data.requirements is string && data.requirements.size() <= 2000)) &&
+        data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 2000 &&
+        data.totalQuantity is number && data.totalQuantity >= 1 && data.totalQuantity <= 1000000 &&
+        data.estimatedAmount is number && data.estimatedAmount >= 0 && data.estimatedAmount <= 1000000000 &&
+        data.finalAmount is number && data.finalAmount >= 0 && data.finalAmount <= 1000000000 &&
+        data.status in [
+          'New Request', 'Contact Customer', 'Quote Prepared', 'Awaiting Customer Approval',
+          'Order Confirmed', 'Awaiting Payment', 'Paid', 'Processing',
+          'Dispatched', 'Delivered', 'Cancelled', 'Rejected'
+        ] &&
+        data.paymentStatus in ['unpaid', 'link_sent', 'paid', 'refunded'] &&
+        (!('paymentLink' in data) || (data.paymentLink is string && data.paymentLink.size() <= 500)) &&
+        (!('transactionRef' in data) || (data.transactionRef is string && data.transactionRef.size() <= 120)) &&
+        (!('courierName' in data) || (data.courierName is string && data.courierName.size() <= 100)) &&
+        (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 100)) &&
+        (!('internalNotes' in data) || (data.internalNotes is string && data.internalNotes.size() <= 2000)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // Collection 1: /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if false;
+      allow create: if isVerifiedUser() && isValidId(adminId) && isValidAdminRecord(incoming()) &&
+        incoming().uid == adminId && incoming().createdAt == request.time && isAdmin();
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(adminId) && isAdmin();
+    }
+
+    // Collection 2: /products/{productId}
+    match /products/{productId} {
+      allow get: if isValidId(productId) && (existing().status == 'active' || isAdmin());
+      allow list: if existing().status == 'active' || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(productId) && isValidProduct(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(productId) && isValidProduct(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(productId) && isAdmin();
+    }
+
+    // Collection 3: /themes/{themeId}
+    match /themes/{themeId} {
+      allow get: if isValidId(themeId) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(themeId) && isValidCatalogTheme(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(themeId) && isValidCatalogTheme(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(themeId) && isAdmin();
+    }
+
+    // Collection 4: /campaigns/{campaignId}
+    match /campaigns/{campaignId} {
+      allow get: if isValidId(campaignId) && (existing().status == 'active' || isAdmin());
+      allow list: if existing().status == 'active' || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(campaignId) && isValidCampaign(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(campaignId) && isValidCampaign(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(campaignId) && isAdmin();
+    }
+
+    // Collection 5: /bulkOrders/{orderId} (PII Isolated to Owner or Admin)
+    match /bulkOrders/{orderId} {
+      allow get: if isValidId(orderId) && (isOwner(existing().ownerId) || isAdmin());
+      allow list: if isVerifiedUser() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(orderId) && isValidBulkOrder(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().status == 'New Request' &&
+        incoming().paymentStatus == 'unpaid' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(orderId) && isValidBulkOrder(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().orderRef == existing().orderRef &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerId) &&
+            !(existing().status in ['Delivered', 'Cancelled', 'Rejected']) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['requirements', 'expectedDeliveryDate', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(orderId) && isAdmin();
+    }
+  }
+}
