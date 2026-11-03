@@ -136,6 +136,153 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidOccasion(data) {
+      return data.keys().hasAll([
+          'name', 'slug', 'featured', 'displayOrder', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'name', 'slug', 'description', 'coverImage', 'bannerImage', 'icon',
+          'featured', 'displayOrder', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 150 &&
+        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 100 && data.slug.matches('^[a-zA-Z0-9_\\-]+$') &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('coverImage' in data) || (data.coverImage is string && data.coverImage.size() <= 10000)) &&
+        (!('bannerImage' in data) || (data.bannerImage is string && data.bannerImage.size() <= 10000)) &&
+        (!('icon' in data) || (data.icon is string && data.icon.size() <= 60)) &&
+        data.featured is bool &&
+        data.displayOrder is number && data.displayOrder >= 0 && data.displayOrder <= 100000 &&
+        data.status in ['active', 'inactive'] &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDecorationTheme(data) {
+      return data.keys().hasAll([
+          'occasionId', 'occasionSlug', 'title', 'slug', 'featured', 'displayOrder', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'occasionId', 'occasionSlug', 'title', 'slug', 'description', 'coverImage',
+          'colorPaletteSummary', 'style', 'featured', 'displayOrder', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.occasionId is string && data.occasionId.size() >= 1 && data.occasionId.size() <= 128 &&
+        data.occasionSlug is string && data.occasionSlug.size() >= 1 && data.occasionSlug.size() <= 100 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 100 && data.slug.matches('^[a-zA-Z0-9_\\-]+$') &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('coverImage' in data) || (data.coverImage is string && data.coverImage.size() <= 10000)) &&
+        (!('colorPaletteSummary' in data) || (data.colorPaletteSummary is string && data.colorPaletteSummary.size() <= 300)) &&
+        (!('style' in data) || (data.style is string && data.style.size() <= 100)) &&
+        data.featured is bool &&
+        data.displayOrder is number && data.displayOrder >= 0 && data.displayOrder <= 100000 &&
+        data.status in ['published', 'draft'] &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDecorationDesign(data) {
+      return data.keys().hasAll([
+          'title', 'slug', 'occasionId', 'occasionSlug', 'themeId', 'themeSlug',
+          'decorationArea', 'indoorOutdoor', 'featured', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'title', 'slug', 'occasionId', 'occasionSlug', 'themeId', 'themeSlug',
+          'mainImage', 'shortDescription', 'fullDescription', 'decorationArea',
+          'recommendedGuestCount', 'indoorOutdoor', 'estimatedBudgetRange',
+          'featured', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 100 && data.slug.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.occasionId is string && data.occasionId.size() >= 1 && data.occasionId.size() <= 128 &&
+        data.occasionSlug is string && data.occasionSlug.size() >= 1 && data.occasionSlug.size() <= 100 &&
+        data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 128 &&
+        data.themeSlug is string && data.themeSlug.size() >= 1 && data.themeSlug.size() <= 100 &&
+        (!('mainImage' in data) || (data.mainImage is string && data.mainImage.size() <= 10000)) &&
+        (!('shortDescription' in data) || (data.shortDescription is string && data.shortDescription.size() <= 500)) &&
+        (!('fullDescription' in data) || (data.fullDescription is string && data.fullDescription.size() <= 3000)) &&
+        data.decorationArea is string && data.decorationArea.size() >= 1 && data.decorationArea.size() <= 80 &&
+        (!('recommendedGuestCount' in data) || (data.recommendedGuestCount is string && data.recommendedGuestCount.size() <= 100)) &&
+        data.indoorOutdoor in ['indoor', 'outdoor', 'both'] &&
+        (!('estimatedBudgetRange' in data) || (data.estimatedBudgetRange is string && data.estimatedBudgetRange.size() <= 120)) &&
+        data.featured is bool &&
+        data.status in ['published', 'draft'] &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDesignProductMapping(data) {
+      return data.keys().hasAll([
+          'designId', 'productId', 'sku', 'recommendedQuantity', 'quantityUnit',
+          'isRequired', 'displayOrder', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'designId', 'productId', 'sku', 'recommendedQuantity', 'quantityUnit',
+          'isRequired', 'displayOrder', 'notes', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.designId is string && data.designId.size() >= 1 && data.designId.size() <= 128 &&
+        data.productId is string && data.productId.size() >= 1 && data.productId.size() <= 128 &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 64 &&
+        data.recommendedQuantity is number && data.recommendedQuantity >= 1 && data.recommendedQuantity <= 100000 &&
+        data.quantityUnit is string && data.quantityUnit.size() >= 1 && data.quantityUnit.size() <= 40 &&
+        data.isRequired is bool &&
+        data.displayOrder is number && data.displayOrder >= 0 && data.displayOrder <= 100000 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDecorationPackage(data) {
+      return data.keys().hasAll([
+          'name', 'slug', 'occasionId', 'occasionSlug', 'featured', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'name', 'slug', 'occasionId', 'occasionSlug', 'themeId', 'themeSlug',
+          'coverImage', 'description', 'startingPrice', 'guestCapacity',
+          'featured', 'status', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 100 && data.slug.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.occasionId is string && data.occasionId.size() >= 1 && data.occasionId.size() <= 128 &&
+        data.occasionSlug is string && data.occasionSlug.size() >= 1 && data.occasionSlug.size() <= 100 &&
+        (!('themeId' in data) || (data.themeId is string && data.themeId.size() <= 128)) &&
+        (!('themeSlug' in data) || (data.themeSlug is string && data.themeSlug.size() <= 100)) &&
+        (!('coverImage' in data) || (data.coverImage is string && data.coverImage.size() <= 10000)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('startingPrice' in data) || (data.startingPrice is number && data.startingPrice >= 0 && data.startingPrice <= 1000000000)) &&
+        (!('guestCapacity' in data) || (data.guestCapacity is string && data.guestCapacity.size() <= 100)) &&
+        data.featured is bool &&
+        data.status in ['published', 'draft'] &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPackageProductMapping(data) {
+      return data.keys().hasAll([
+          'packageId', 'productId', 'sku', 'recommendedQuantity', 'quantityUnit',
+          'isRequired', 'displayOrder', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'packageId', 'productId', 'sku', 'recommendedQuantity', 'quantityUnit',
+          'isRequired', 'displayOrder', 'notes', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.packageId is string && data.packageId.size() >= 1 && data.packageId.size() <= 128 &&
+        data.productId is string && data.productId.size() >= 1 && data.productId.size() <= 128 &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 64 &&
+        data.recommendedQuantity is number && data.recommendedQuantity >= 1 && data.recommendedQuantity <= 100000 &&
+        data.quantityUnit is string && data.quantityUnit.size() >= 1 && data.quantityUnit.size() <= 40 &&
+        data.isRequired is bool &&
+        data.displayOrder is number && data.displayOrder >= 0 && data.displayOrder <= 100000 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     function isValidBulkOrder(data) {
       return data.keys().hasAll([
           'orderRef', 'ownerId', 'customerName', 'mobile', 'whatsapp',
@@ -146,6 +293,8 @@ service cloud.firestore {
         data.keys().hasOnly([
           'orderRef', 'ownerId', 'customerName', 'companyName', 'mobile', 'whatsapp',
           'email', 'address', 'city', 'state', 'pinCode', 'gstNumber', 'campaignSlug',
+          'occasionSlug', 'occasionName', 'decorationThemeSlug', 'decorationThemeName',
+          'packageName', 'eventDate', 'venueLocation', 'guestCount',
           'expectedDeliveryDate', 'preferredContact', 'requirements', 'itemsSummary',
           'totalQuantity', 'estimatedAmount', 'finalAmount', 'status', 'paymentStatus',
           'paymentLink', 'transactionRef', 'courierName', 'trackingNumber',
@@ -164,6 +313,14 @@ service cloud.firestore {
         data.pinCode is string && data.pinCode.size() >= 4 && data.pinCode.size() <= 16 &&
         (!('gstNumber' in data) || (data.gstNumber is string && data.gstNumber.size() <= 30)) &&
         (!('campaignSlug' in data) || (data.campaignSlug is string && data.campaignSlug.size() <= 100)) &&
+        (!('occasionSlug' in data) || (data.occasionSlug is string && data.occasionSlug.size() <= 100)) &&
+        (!('occasionName' in data) || (data.occasionName is string && data.occasionName.size() <= 150)) &&
+        (!('decorationThemeSlug' in data) || (data.decorationThemeSlug is string && data.decorationThemeSlug.size() <= 100)) &&
+        (!('decorationThemeName' in data) || (data.decorationThemeName is string && data.decorationThemeName.size() <= 200)) &&
+        (!('packageName' in data) || (data.packageName is string && data.packageName.size() <= 200)) &&
+        (!('eventDate' in data) || (data.eventDate is string && data.eventDate.size() <= 40)) &&
+        (!('venueLocation' in data) || (data.venueLocation is string && data.venueLocation.size() <= 300)) &&
+        (!('guestCount' in data) || (data.guestCount is string && data.guestCount.size() <= 60)) &&
         (!('expectedDeliveryDate' in data) || (data.expectedDeliveryDate is string && data.expectedDeliveryDate.size() <= 40)) &&
         data.preferredContact in ['whatsapp', 'phone', 'email'] &&
         (!('requirements' in data) || (data.requirements is string && data.requirements.size() <= 2000)) &&
@@ -247,7 +404,109 @@ service cloud.firestore {
       allow delete: if isVerifiedUser() && isValidId(campaignId) && isAdmin();
     }
 
-    // Collection 5: /bulkOrders/{orderId} (PII Isolated to Owner or Admin)
+    // Collection 5: /occasions/{occasionId}
+    match /occasions/{occasionId} {
+      allow get: if isValidId(occasionId) && (existing().status == 'active' || isAdmin());
+      allow list: if existing().status == 'active' || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(occasionId) && isValidOccasion(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(occasionId) && isValidOccasion(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(occasionId) && isAdmin();
+    }
+
+    // Collection 6: /decorationThemes/{themeId}
+    match /decorationThemes/{themeId} {
+      allow get: if isValidId(themeId) && (existing().status == 'published' || isAdmin());
+      allow list: if existing().status == 'published' || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(themeId) && isValidDecorationTheme(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(themeId) && isValidDecorationTheme(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(themeId) && isAdmin();
+    }
+
+    // Collection 7: /decorationDesigns/{designId}
+    match /decorationDesigns/{designId} {
+      allow get: if isValidId(designId) && (existing().status == 'published' || isAdmin());
+      allow list: if existing().status == 'published' || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(designId) && isValidDecorationDesign(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(designId) && isValidDecorationDesign(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(designId) && isAdmin();
+    }
+
+    // Collection 8: /designProducts/{mappingId}
+    match /designProducts/{mappingId} {
+      allow get: if isValidId(mappingId);
+      allow list: if true;
+      allow create: if isVerifiedUser() && isValidId(mappingId) && isValidDesignProductMapping(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(mappingId) && isValidDesignProductMapping(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(mappingId) && isAdmin();
+    }
+
+    // Collection 9: /packages/{packageId}
+    match /packages/{packageId} {
+      allow get: if isValidId(packageId) && (existing().status == 'published' || isAdmin());
+      allow list: if existing().status == 'published' || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(packageId) && isValidDecorationPackage(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(packageId) && isValidDecorationPackage(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(packageId) && isAdmin();
+    }
+
+    // Collection 10: /packageProducts/{mappingId}
+    match /packageProducts/{mappingId} {
+      allow get: if isValidId(mappingId);
+      allow list: if true;
+      allow create: if isVerifiedUser() && isValidId(mappingId) && isValidPackageProductMapping(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(mappingId) && isValidPackageProductMapping(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(mappingId) && isAdmin();
+    }
+
+    // Collection 11: /bulkOrders/{orderId} (PII Isolated to Owner or Admin)
     match /bulkOrders/{orderId} {
       allow get: if isValidId(orderId) && (isOwner(existing().ownerId) || isAdmin());
       allow list: if isVerifiedUser() && (existing().ownerId == request.auth.uid || isAdmin());

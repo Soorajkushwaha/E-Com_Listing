@@ -1,11 +1,17 @@
 /**
- * Cloudflare Workers Entry Point for Catalog Maker Pro
+ * Cloudflare Workers Entry Point for DesiDiya — Catalog Maker Pro
  * Compatible with Cloudflare Workers + Static Assets (`[assets]` in wrangler.toml).
  */
 
 import {
   INITIAL_BULK_ORDERS,
   INITIAL_CAMPAIGNS,
+  INITIAL_DECORATION_DESIGNS,
+  INITIAL_DECORATION_THEMES,
+  INITIAL_DESIGN_PRODUCTS,
+  INITIAL_OCCASIONS,
+  INITIAL_PACKAGES,
+  INITIAL_PACKAGE_PRODUCTS,
   INITIAL_PRODUCTS,
   INITIAL_THEMES,
 } from './src/utils/seedData';
@@ -27,6 +33,12 @@ const memoryStore = {
   products: [...INITIAL_PRODUCTS],
   themes: [...INITIAL_THEMES],
   campaigns: [...INITIAL_CAMPAIGNS],
+  occasions: [...INITIAL_OCCASIONS],
+  decorationThemes: [...INITIAL_DECORATION_THEMES],
+  decorationDesigns: [...INITIAL_DECORATION_DESIGNS],
+  designProducts: [...INITIAL_DESIGN_PRODUCTS],
+  packages: [...INITIAL_PACKAGES],
+  packageProducts: [...INITIAL_PACKAGE_PRODUCTS],
   bulkOrders: [...INITIAL_BULK_ORDERS],
   activeThemeId: 'theme-diwali-gold',
   previousThemeId: 'theme-minimal-white',
@@ -216,6 +228,6 @@ export default {
       return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), request));
     }
 
-    return new Response('Catalog Maker Pro Worker API Active', { status: 200 });
+    return new Response('DesiDiya — Catalog Maker Pro Worker API Active', { status: 200 });
   },
 };

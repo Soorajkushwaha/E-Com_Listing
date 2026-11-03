@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   FileText,
   FolderKanban,
+  Layers,
   LayoutDashboard,
   Lock,
   LogOut,
@@ -23,6 +24,7 @@ import {
   Settings,
   ShieldCheck,
   ShoppingBag,
+  Sparkles,
   Users,
 } from 'lucide-react';
 import type {
@@ -30,7 +32,13 @@ import type {
   Campaign,
   CatalogTheme,
   CustomerSummary,
+  DecorationDesign,
+  DecorationPackage,
+  DecorationTheme,
+  DesignProductMapping,
+  Occasion,
   OrderStatus,
+  PackageProductMapping,
   PaymentStatus,
   Product,
 } from '../types/catalog';
@@ -49,9 +57,19 @@ import { uploadPersistentProductImage } from '../lib/firebase';
 import { ExcelImportPanel } from './ExcelImportPanel';
 import { AiThemeDesignerPanel } from './AiThemeDesignerPanel';
 import { ProductVisual } from './ProductVisual';
+import {
+  DecorationDesignManagerPanel,
+  OccasionManagerPanel,
+  PackageManagerPanel,
+  ThemeManagerPanel,
+} from './AdminOccasionModules';
 
 export type AdminSection =
   | 'overview'
+  | 'occasions'
+  | 'decoration-themes'
+  | 'decoration-designs'
+  | 'packages'
   | 'products'
   | 'excel'
   | 'themes'
@@ -74,6 +92,12 @@ interface AdminDashboardViewProps {
   activeTheme: CatalogTheme;
   previousThemeId: string;
   campaigns: Campaign[];
+  occasions?: Occasion[];
+  decorationThemes?: DecorationTheme[];
+  decorationDesigns?: DecorationDesign[];
+  designProducts?: DesignProductMapping[];
+  packages?: DecorationPackage[];
+  packageProducts?: PackageProductMapping[];
   bulkOrders: BulkOrder[];
   catalogViews: number;
   onOpenAddProduct: () => void;
@@ -88,7 +112,24 @@ interface AdminDashboardViewProps {
   onUpdateOrder: (orderId: string, updates: Partial<BulkOrder> & { timelineNote?: string }) => Promise<void>;
   onSaveCampaign: (campaign: Partial<Campaign>) => Promise<void>;
   onDeleteCampaign: (campaignId: string) => Promise<void>;
+  onSaveOccasion?: (occasion: Partial<Occasion>) => Promise<void>;
+  onDeleteOccasion?: (occasionId: string) => Promise<void>;
+  onSaveDecorationTheme?: (theme: Partial<DecorationTheme>) => Promise<void>;
+  onDeleteDecorationTheme?: (themeId: string) => Promise<void>;
+  onSaveDecorationDesign?: (
+    design: Partial<DecorationDesign>,
+    mappings: Partial<DesignProductMapping>[]
+  ) => Promise<void>;
+  onDeleteDecorationDesign?: (designId: string) => Promise<void>;
+  onSavePackage?: (
+    pkg: Partial<DecorationPackage>,
+    mappings: Partial<PackageProductMapping>[]
+  ) => Promise<void>;
+  onDeletePackage?: (packageId: string) => Promise<void>;
   onOpenPublicCatalog: (slug: string) => void;
+  onOpenPublicOccasion?: (slug: string) => void;
+  onOpenPublicTheme?: (slug: string) => void;
+  onOpenPublicDesign?: (slug: string) => void;
   onOpenBulkOrderModal: (product: Product, qty?: number) => void;
 }
 
@@ -105,6 +146,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   activeTheme,
   previousThemeId,
   campaigns,
+  occasions = [],
+  decorationThemes = [],
+  decorationDesigns = [],
+  designProducts = [],
+  packages = [],
+  packageProducts = [],
   bulkOrders,
   catalogViews,
   onOpenAddProduct,
@@ -116,7 +163,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onUpdateOrder,
   onSaveCampaign,
   onDeleteCampaign,
+  onSaveOccasion,
+  onDeleteOccasion,
+  onSaveDecorationTheme,
+  onDeleteDecorationTheme,
+  onSaveDecorationDesign,
+  onDeleteDecorationDesign,
+  onSavePackage,
+  onDeletePackage,
   onOpenPublicCatalog,
+  onOpenPublicOccasion,
+  onOpenPublicTheme,
+  onOpenPublicDesign,
   onOpenBulkOrderModal,
 }) => {
   const [passcodeInput, setPasscodeInput] = useState('ADMIN-2026');
@@ -537,11 +595,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
   const NAV_ITEMS: { id: AdminSection; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'occasions', label: `Occasions (${occasions.length})`, icon: Sparkles },
+    { id: 'decoration-themes', label: `Decoration Themes (${decorationThemes.length})`, icon: Palette },
+    { id: 'decoration-designs', label: `Decoration Designs (${decorationDesigns.length})`, icon: Layers },
+    { id: 'packages', label: `Bulk Packages (${packages.length})`, icon: Package },
     { id: 'campaigns', label: `Campaigns (${campaigns.length})`, icon: FolderKanban },
     { id: 'products', label: `Products (${products.length})`, icon: ShoppingBag },
     { id: 'excel', label: 'Excel Import', icon: FileSpreadsheet },
-    { id: 'orders', label: `Bulk Orders (${bulkOrders.length})`, icon: Package },
-    { id: 'themes', label: 'Themes & AI Designer', icon: Palette },
+    { id: 'orders', label: `Bulk Orders (${bulkOrders.length})`, icon: BookOpen },
+    { id: 'themes', label: 'Storefront AI Theme', icon: Palette },
     { id: 'customers', label: `Customers (${customersList.length})`, icon: Users },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Settings & Deploy', icon: Settings },
@@ -1058,6 +1120,59 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         Delivery: {selectedOrder.address}, {selectedOrder.city}, {selectedOrder.state} -{' '}
                         {selectedOrder.pinCode} · GSTIN: {selectedOrder.gstNumber || 'Not provided'}
                       </div>
+                      {(selectedOrder.occasionName ||
+                        selectedOrder.decorationThemeName ||
+                        selectedOrder.eventDate ||
+                        selectedOrder.venueLocation ||
+                        selectedOrder.guestCount ||
+                        (selectedOrder.selectedDesignNames && selectedOrder.selectedDesignNames.length > 0)) && (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-stone-800 space-y-0.5">
+                          <div className="font-bold text-amber-900 uppercase tracking-wider text-[10px]">
+                            Occasion &amp; Event Planning Brief
+                          </div>
+                          <div>
+                            {selectedOrder.occasionName && (
+                              <span>
+                                Occasion: <strong>{selectedOrder.occasionName}</strong> ·{' '}
+                              </span>
+                            )}
+                            {selectedOrder.decorationThemeName && (
+                              <span>
+                                Theme: <strong>{selectedOrder.decorationThemeName}</strong> ·{' '}
+                              </span>
+                            )}
+                            {selectedOrder.eventDate && (
+                              <span>
+                                Event Date: <strong>{selectedOrder.eventDate}</strong> ·{' '}
+                              </span>
+                            )}
+                            {selectedOrder.guestCount && (
+                              <span>
+                                Guests: <strong>{selectedOrder.guestCount}</strong>
+                              </span>
+                            )}
+                          </div>
+                          {(selectedOrder.venueLocation ||
+                            selectedOrder.packageName ||
+                            (selectedOrder.selectedDesignNames &&
+                              selectedOrder.selectedDesignNames.length > 0)) && (
+                            <div className="text-[11px] text-stone-600">
+                              {selectedOrder.venueLocation && (
+                                <span>Venue: {selectedOrder.venueLocation} · </span>
+                              )}
+                              {selectedOrder.packageName && (
+                                <span>Package: {selectedOrder.packageName} · </span>
+                              )}
+                              {selectedOrder.selectedDesignNames &&
+                                selectedOrder.selectedDesignNames.length > 0 && (
+                                  <span>
+                                    Designs: {selectedOrder.selectedDesignNames.join(', ')}
+                                  </span>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <button
@@ -2087,6 +2202,72 @@ npx wrangler deploy`}
               </div>
             </div>
           </div>
+        )}
+
+        {/* SECTION 11: OCCASIONS MANAGER */}
+        {activeSection === 'occasions' && (
+          <OccasionManagerPanel
+            occasions={occasions}
+            decorationThemes={decorationThemes}
+            decorationDesigns={decorationDesigns}
+            onSaveOccasion={async (occ) => {
+              await onSaveOccasion?.(occ);
+            }}
+            onDeleteOccasion={async (id) => {
+              await onDeleteOccasion?.(id);
+            }}
+            onOpenPublicOccasion={(slug) => onOpenPublicOccasion?.(slug)}
+          />
+        )}
+
+        {/* SECTION 12: DECORATION THEMES MANAGER */}
+        {activeSection === 'decoration-themes' && (
+          <ThemeManagerPanel
+            occasions={occasions}
+            decorationThemes={decorationThemes}
+            onSaveDecorationTheme={async (thm) => {
+              await onSaveDecorationTheme?.(thm);
+            }}
+            onDeleteDecorationTheme={async (id) => {
+              await onDeleteDecorationTheme?.(id);
+            }}
+            onOpenPublicTheme={(slug) => onOpenPublicTheme?.(slug)}
+          />
+        )}
+
+        {/* SECTION 13: DECORATION DESIGN GALLERY & PRODUCT MAPPING */}
+        {activeSection === 'decoration-designs' && (
+          <DecorationDesignManagerPanel
+            occasions={occasions}
+            decorationThemes={decorationThemes}
+            decorationDesigns={decorationDesigns}
+            designProducts={designProducts}
+            products={products}
+            onSaveDecorationDesign={async (design, mappings) => {
+              await onSaveDecorationDesign?.(design, mappings);
+            }}
+            onDeleteDecorationDesign={async (id) => {
+              await onDeleteDecorationDesign?.(id);
+            }}
+            onOpenPublicDesign={(slug) => onOpenPublicDesign?.(slug)}
+          />
+        )}
+
+        {/* SECTION 14: BULK DECORATION PACKAGES MANAGER */}
+        {activeSection === 'packages' && (
+          <PackageManagerPanel
+            occasions={occasions}
+            decorationThemes={decorationThemes}
+            packages={packages}
+            packageProducts={packageProducts}
+            products={products}
+            onSavePackage={async (pkg, mappings) => {
+              await onSavePackage?.(pkg, mappings);
+            }}
+            onDeletePackage={async (id) => {
+              await onDeletePackage?.(id);
+            }}
+          />
         )}
       </div>
     </div>

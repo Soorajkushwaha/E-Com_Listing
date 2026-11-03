@@ -19,7 +19,18 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
-import type { BulkOrder, Campaign, CatalogTheme, Product } from '../types/catalog';
+import type {
+  BulkOrder,
+  Campaign,
+  CatalogTheme,
+  DecorationDesign,
+  DecorationPackage,
+  DecorationTheme,
+  DesignProductMapping,
+  Occasion,
+  PackageProductMapping,
+  Product,
+} from '../types/catalog';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -105,7 +116,7 @@ export async function signOutAdmin(): Promise<void> {
 export { onAuthStateChanged, type User };
 
 /**
- * Uploads a product image file to Firebase Storage when authenticated as verified admin,
+ * Uploads a product or decoration image file to Firebase Storage when authenticated as verified admin,
  * or converts to a persistent compressed data URL so images always survive page reloads.
  */
 export async function uploadPersistentProductImage(file: File): Promise<string> {
@@ -243,6 +254,201 @@ export async function deleteCampaignFromFirestore(campaignId: string): Promise<v
   }
 }
 
+export async function syncOccasionToFirestore(occasion: Occasion): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = occasion.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `occasions/${docId}`;
+  try {
+    await setDoc(doc(db, 'occasions', docId), {
+      name: occasion.name.slice(0, 150),
+      slug: occasion.slug.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 100),
+      description: (occasion.description || '').slice(0, 2000),
+      coverImage: (occasion.coverImage || '').slice(0, 10000),
+      bannerImage: (occasion.bannerImage || '').slice(0, 10000),
+      icon: (occasion.icon || 'Sparkles').slice(0, 60),
+      featured: Boolean(occasion.featured),
+      displayOrder: Math.max(0, Number(occasion.displayOrder) || 1),
+      status: occasion.status === 'inactive' ? 'inactive' : 'active',
+      ownerId: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteOccasionFromFirestore(occasionId: string): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = occasionId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `occasions/${docId}`;
+  try {
+    await deleteDoc(doc(db, 'occasions', docId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function syncDecorationThemeToFirestore(theme: DecorationTheme): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = theme.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `decorationThemes/${docId}`;
+  try {
+    await setDoc(doc(db, 'decorationThemes', docId), {
+      occasionId: theme.occasionId.slice(0, 128),
+      occasionSlug: theme.occasionSlug.slice(0, 100),
+      title: theme.title.slice(0, 200),
+      slug: theme.slug.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 100),
+      description: (theme.description || '').slice(0, 2000),
+      coverImage: (theme.coverImage || '').slice(0, 10000),
+      colorPaletteSummary: (theme.colorPalette || []).join(', ').slice(0, 300),
+      style: (theme.style || 'Royal').slice(0, 100),
+      featured: Boolean(theme.featured),
+      displayOrder: Math.max(0, Number(theme.displayOrder) || 1),
+      status: theme.status === 'draft' ? 'draft' : 'published',
+      ownerId: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteDecorationThemeFromFirestore(themeId: string): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = themeId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `decorationThemes/${docId}`;
+  try {
+    await deleteDoc(doc(db, 'decorationThemes', docId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function syncDecorationDesignToFirestore(
+  design: DecorationDesign,
+  mappings?: DesignProductMapping[]
+): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = design.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `decorationDesigns/${docId}`;
+  try {
+    await setDoc(doc(db, 'decorationDesigns', docId), {
+      title: design.title.slice(0, 200),
+      slug: design.slug.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 100),
+      occasionId: design.occasionId.slice(0, 128),
+      occasionSlug: design.occasionSlug.slice(0, 100),
+      themeId: design.themeId.slice(0, 128),
+      themeSlug: design.themeSlug.slice(0, 100),
+      mainImage: (design.mainImage || '').slice(0, 10000),
+      shortDescription: (design.shortDescription || '').slice(0, 500),
+      fullDescription: (design.fullDescription || '').slice(0, 3000),
+      decorationArea: (design.decorationArea || 'Stage / Mandap').slice(0, 80),
+      recommendedGuestCount: (design.recommendedGuestCount || '100 - 300 Guests').slice(0, 100),
+      indoorOutdoor: design.indoorOutdoor || 'both',
+      estimatedBudgetRange: (design.estimatedBudgetRange || '').slice(0, 120),
+      featured: Boolean(design.featured),
+      status: design.status === 'draft' ? 'draft' : 'published',
+      ownerId: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    if (Array.isArray(mappings)) {
+      for (const m of mappings) {
+        const mapId = m.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+        await setDoc(doc(db, 'designProducts', mapId), {
+          designId: m.designId.slice(0, 128),
+          productId: m.productId.slice(0, 128),
+          sku: m.sku.slice(0, 64),
+          recommendedQuantity: Math.max(1, Number(m.recommendedQuantity) || 1),
+          quantityUnit: (m.quantityUnit || 'pcs').slice(0, 40),
+          isRequired: Boolean(m.isRequired),
+          displayOrder: Math.max(0, Number(m.displayOrder) || 1),
+          notes: (m.notes || '').slice(0, 500),
+          ownerId: auth.currentUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteDecorationDesignFromFirestore(designId: string): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = designId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `decorationDesigns/${docId}`;
+  try {
+    await deleteDoc(doc(db, 'decorationDesigns', docId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function syncPackageToFirestore(
+  pkg: DecorationPackage,
+  mappings?: PackageProductMapping[]
+): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = pkg.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `packages/${docId}`;
+  try {
+    await setDoc(doc(db, 'packages', docId), {
+      name: pkg.name.slice(0, 200),
+      slug: pkg.slug.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 100),
+      occasionId: pkg.occasionId.slice(0, 128),
+      occasionSlug: pkg.occasionSlug.slice(0, 100),
+      themeId: (pkg.themeId || '').slice(0, 128),
+      themeSlug: (pkg.themeSlug || '').slice(0, 100),
+      coverImage: (pkg.coverImage || '').slice(0, 10000),
+      description: (pkg.description || '').slice(0, 2000),
+      startingPrice: Math.max(0, Number(pkg.startingPrice) || 0),
+      guestCapacity: (pkg.guestCapacity || '').slice(0, 100),
+      featured: Boolean(pkg.featured),
+      status: pkg.status === 'draft' ? 'draft' : 'published',
+      ownerId: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    if (Array.isArray(mappings)) {
+      for (const m of mappings) {
+        const mapId = m.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+        await setDoc(doc(db, 'packageProducts', mapId), {
+          packageId: m.packageId.slice(0, 128),
+          productId: m.productId.slice(0, 128),
+          sku: m.sku.slice(0, 64),
+          recommendedQuantity: Math.max(1, Number(m.recommendedQuantity) || 1),
+          quantityUnit: (m.quantityUnit || 'pcs').slice(0, 40),
+          isRequired: Boolean(m.isRequired),
+          displayOrder: Math.max(0, Number(m.displayOrder) || 1),
+          notes: (m.notes || '').slice(0, 500),
+          ownerId: auth.currentUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deletePackageFromFirestore(packageId: string): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+  const docId = packageId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  const path = `packages/${docId}`;
+  try {
+    await deleteDoc(doc(db, 'packages', docId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export async function syncBulkOrderToFirestore(order: BulkOrder): Promise<void> {
   if (!auth.currentUser || !auth.currentUser.emailVerified) return;
   const docId = order.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
@@ -262,6 +468,14 @@ export async function syncBulkOrderToFirestore(order: BulkOrder): Promise<void> 
       pinCode: order.pinCode.slice(0, 16),
       gstNumber: (order.gstNumber || '').slice(0, 30),
       campaignSlug: (order.campaignSlug || '').slice(0, 100),
+      occasionSlug: (order.occasionSlug || '').slice(0, 100),
+      occasionName: (order.occasionName || '').slice(0, 150),
+      decorationThemeSlug: (order.decorationThemeSlug || '').slice(0, 100),
+      decorationThemeName: (order.decorationThemeName || '').slice(0, 200),
+      packageName: (order.packageName || '').slice(0, 200),
+      eventDate: (order.eventDate || '').slice(0, 40),
+      venueLocation: (order.venueLocation || '').slice(0, 300),
+      guestCount: (order.guestCount || '').slice(0, 60),
       expectedDeliveryDate: (order.expectedDeliveryDate || '').slice(0, 40),
       preferredContact: order.preferredContact,
       requirements: (order.requirements || '').slice(0, 2000),

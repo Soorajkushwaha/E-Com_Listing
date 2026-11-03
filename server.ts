@@ -6,6 +6,12 @@ import { GoogleGenAI, Type } from '@google/genai';
 import {
   INITIAL_BULK_ORDERS,
   INITIAL_CAMPAIGNS,
+  INITIAL_DECORATION_DESIGNS,
+  INITIAL_DECORATION_THEMES,
+  INITIAL_DESIGN_PRODUCTS,
+  INITIAL_OCCASIONS,
+  INITIAL_PACKAGES,
+  INITIAL_PACKAGE_PRODUCTS,
   INITIAL_PRODUCTS,
   INITIAL_THEMES,
 } from './src/utils/seedData.ts';
@@ -19,6 +25,12 @@ import type {
   BulkOrder,
   Campaign,
   CatalogTheme,
+  DecorationDesign,
+  DecorationPackage,
+  DecorationTheme,
+  DesignProductMapping,
+  Occasion,
+  PackageProductMapping,
   Product,
 } from './src/types/catalog.ts';
 
@@ -26,6 +38,12 @@ interface PersistentStore {
   products: Product[];
   themes: CatalogTheme[];
   campaigns: Campaign[];
+  occasions: Occasion[];
+  decorationThemes: DecorationTheme[];
+  decorationDesigns: DecorationDesign[];
+  designProducts: DesignProductMapping[];
+  packages: DecorationPackage[];
+  packageProducts: PackageProductMapping[];
   bulkOrders: BulkOrder[];
   activeThemeId: string;
   previousThemeId: string;
@@ -41,8 +59,17 @@ function loadStore(): PersistentStore {
       const raw = fs.readFileSync(STORE_PATH, 'utf8');
       const parsed = JSON.parse(raw) as PersistentStore;
       if (Array.isArray(parsed.products) && Array.isArray(parsed.themes)) {
+        // Ensure any newly seeded products are present
+        const existingProductSkus = new Set(parsed.products.map((p) => p.sku.toUpperCase()));
+        for (const seedProd of INITIAL_PRODUCTS) {
+          if (!existingProductSkus.has(seedProd.sku.toUpperCase())) {
+            parsed.products.push(seedProd);
+          }
+        }
+
         // Ensure any newly seeded campaigns or campaign metadata fields are present
-        const existingSlugs = new Set((parsed.campaigns || []).map((c) => c.slug));
+        parsed.campaigns = Array.isArray(parsed.campaigns) ? parsed.campaigns : [];
+        const existingSlugs = new Set(parsed.campaigns.map((c) => c.slug));
         for (const seedCamp of INITIAL_CAMPAIGNS) {
           if (!existingSlugs.has(seedCamp.slug)) {
             parsed.campaigns.push(seedCamp);
@@ -60,6 +87,33 @@ function loadStore(): PersistentStore {
             }
           }
         }
+
+        // Ensure occasions, decorationThemes, decorationDesigns, designProducts, packages, packageProducts exist
+        parsed.occasions =
+          Array.isArray(parsed.occasions) && parsed.occasions.length > 0
+            ? parsed.occasions
+            : [...INITIAL_OCCASIONS];
+        parsed.decorationThemes =
+          Array.isArray(parsed.decorationThemes) && parsed.decorationThemes.length > 0
+            ? parsed.decorationThemes
+            : [...INITIAL_DECORATION_THEMES];
+        parsed.decorationDesigns =
+          Array.isArray(parsed.decorationDesigns) && parsed.decorationDesigns.length > 0
+            ? parsed.decorationDesigns
+            : [...INITIAL_DECORATION_DESIGNS];
+        parsed.designProducts =
+          Array.isArray(parsed.designProducts) && parsed.designProducts.length > 0
+            ? parsed.designProducts
+            : [...INITIAL_DESIGN_PRODUCTS];
+        parsed.packages =
+          Array.isArray(parsed.packages) && parsed.packages.length > 0
+            ? parsed.packages
+            : [...INITIAL_PACKAGES];
+        parsed.packageProducts =
+          Array.isArray(parsed.packageProducts) && parsed.packageProducts.length > 0
+            ? parsed.packageProducts
+            : [...INITIAL_PACKAGE_PRODUCTS];
+
         return parsed;
       }
     }
@@ -71,6 +125,12 @@ function loadStore(): PersistentStore {
     products: [...INITIAL_PRODUCTS],
     themes: [...INITIAL_THEMES],
     campaigns: [...INITIAL_CAMPAIGNS],
+    occasions: [...INITIAL_OCCASIONS],
+    decorationThemes: [...INITIAL_DECORATION_THEMES],
+    decorationDesigns: [...INITIAL_DECORATION_DESIGNS],
+    designProducts: [...INITIAL_DESIGN_PRODUCTS],
+    packages: [...INITIAL_PACKAGES],
+    packageProducts: [...INITIAL_PACKAGE_PRODUCTS],
     bulkOrders: [...INITIAL_BULK_ORDERS],
     activeThemeId: 'theme-diwali-gold',
     previousThemeId: 'theme-minimal-white',
@@ -202,6 +262,12 @@ async function startServer() {
       products: store.products,
       themes: store.themes,
       campaigns: store.campaigns,
+      occasions: store.occasions,
+      decorationThemes: store.decorationThemes,
+      decorationDesigns: store.decorationDesigns,
+      designProducts: store.designProducts,
+      packages: store.packages,
+      packageProducts: store.packageProducts,
       activeThemeId: store.activeThemeId,
       previousThemeId: store.previousThemeId,
       catalogViews: store.catalogViews,
@@ -646,7 +712,6 @@ async function startServer() {
       store.campaigns.unshift(record);
     }
 
-    // If productIds were explicitly assigned to this campaign, also ensure those products include this campaign slug
     if (Array.isArray(body.productIds)) {
       const assignedSet = new Set(body.productIds);
       store.products = store.products.map((prod) => {
@@ -680,10 +745,318 @@ async function startServer() {
       res.status(404).json({ error: 'Campaign not found.' });
       return;
     }
-    // Deleting a campaign removes only the campaign record; products and bulkOrders remain intact
     store.campaigns = store.campaigns.filter((c) => c.id !== target.id);
     saveStore(store);
     res.json({ ok: true, campaigns: store.campaigns });
+  });
+
+  // 7B. Occasions Create / Update / Delete
+  app.post('/api/occasions', (req, res) => {
+    const body = req.body as Partial<Occasion>;
+    if (!body.name || !body.slug) {
+      res.status(400).json({ error: 'Occasion Name and Slug are required.' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const cleanSlug = body.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const existingIdx = store.occasions.findIndex(
+      (o) => o.id === body.id || o.slug === cleanSlug
+    );
+    const record: Occasion = {
+      id: existingIdx >= 0 ? store.occasions[existingIdx].id : body.id || `occ-${Date.now()}`,
+      name: body.name.trim().slice(0, 150),
+      slug: cleanSlug,
+      description: String(body.description || '').trim().slice(0, 2000),
+      coverImage: String(body.coverImage ?? (existingIdx >= 0 ? store.occasions[existingIdx].coverImage : '')).trim(),
+      bannerImage: String(body.bannerImage ?? (existingIdx >= 0 ? store.occasions[existingIdx].bannerImage : '')).trim(),
+      icon: String(body.icon || 'Sparkles').trim().slice(0, 60),
+      featured: Boolean(body.featured),
+      displayOrder: Number(body.displayOrder) || store.occasions.length + 1,
+      status: body.status === 'inactive' ? 'inactive' : 'active',
+      ownerId: 'system-admin',
+      createdAt: existingIdx >= 0 ? store.occasions[existingIdx].createdAt : now,
+      updatedAt: now,
+    };
+
+    if (existingIdx >= 0) {
+      store.occasions[existingIdx] = record;
+    } else {
+      store.occasions.push(record);
+    }
+    store.occasions.sort((a, b) => a.displayOrder - b.displayOrder);
+    saveStore(store);
+    res.json({ occasion: record, occasions: store.occasions });
+  });
+
+  app.delete('/api/occasions/:id', (req, res) => {
+    const { id } = req.params;
+    store.occasions = store.occasions.filter((o) => o.id !== id && o.slug !== id);
+    saveStore(store);
+    res.json({ ok: true, occasions: store.occasions });
+  });
+
+  // 7C. Decoration Themes Create / Update / Delete
+  app.post('/api/decoration-themes', (req, res) => {
+    const body = req.body as Partial<DecorationTheme>;
+    if (!body.title || !body.slug || !body.occasionId) {
+      res.status(400).json({ error: 'Theme Title, Slug, and Occasion are required.' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const cleanSlug = body.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const occ = store.occasions.find((o) => o.id === body.occasionId || o.slug === body.occasionSlug);
+    const existingIdx = store.decorationThemes.findIndex(
+      (t) => t.id === body.id || t.slug === cleanSlug
+    );
+    const record: DecorationTheme = {
+      id: existingIdx >= 0 ? store.decorationThemes[existingIdx].id : body.id || `dtheme-${Date.now()}`,
+      occasionId: occ ? occ.id : String(body.occasionId),
+      occasionSlug: occ ? occ.slug : String(body.occasionSlug || 'wedding'),
+      title: body.title.trim().slice(0, 200),
+      slug: cleanSlug,
+      description: String(body.description || '').trim().slice(0, 2000),
+      coverImage: String(body.coverImage ?? (existingIdx >= 0 ? store.decorationThemes[existingIdx].coverImage : '')).trim(),
+      galleryImages: Array.isArray(body.galleryImages)
+        ? body.galleryImages.map((img) => String(img).trim()).filter(Boolean)
+        : existingIdx >= 0
+          ? store.decorationThemes[existingIdx].galleryImages
+          : [],
+      colorPalette: Array.isArray(body.colorPalette)
+        ? body.colorPalette.map((c) => String(c).trim()).filter(Boolean)
+        : existingIdx >= 0
+          ? store.decorationThemes[existingIdx].colorPalette
+          : ['Warm Gold', 'Ivory'],
+      style: (body.style as any) || 'Royal',
+      featured: Boolean(body.featured),
+      displayOrder: Number(body.displayOrder) || store.decorationThemes.length + 1,
+      status: body.status === 'draft' ? 'draft' : 'published',
+      ownerId: 'system-admin',
+      createdAt: existingIdx >= 0 ? store.decorationThemes[existingIdx].createdAt : now,
+      updatedAt: now,
+    };
+
+    if (existingIdx >= 0) {
+      store.decorationThemes[existingIdx] = record;
+    } else {
+      store.decorationThemes.push(record);
+    }
+    store.decorationThemes.sort((a, b) => a.displayOrder - b.displayOrder);
+    saveStore(store);
+    res.json({ decorationTheme: record, decorationThemes: store.decorationThemes });
+  });
+
+  app.delete('/api/decoration-themes/:id', (req, res) => {
+    const { id } = req.params;
+    store.decorationThemes = store.decorationThemes.filter((t) => t.id !== id && t.slug !== id);
+    saveStore(store);
+    res.json({ ok: true, decorationThemes: store.decorationThemes });
+  });
+
+  // 7D. Decoration Designs & Product Mappings Create / Update / Delete
+  app.post('/api/decoration-designs', (req, res) => {
+    const { design } = req.body as {
+      design: Partial<DecorationDesign>;
+      productMappings?: Partial<DesignProductMapping>[];
+      mappings?: Partial<DesignProductMapping>[];
+    };
+    const productMappings: Partial<DesignProductMapping>[] | undefined =
+      req.body.productMappings || req.body.mappings;
+    if (!design || !design.title || !design.slug || !design.occasionId || !design.themeId) {
+      res.status(400).json({ error: 'Design Title, Slug, Occasion, and Theme are required.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const cleanSlug = design.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const occ = store.occasions.find((o) => o.id === design.occasionId || o.slug === design.occasionSlug);
+    const thm = store.decorationThemes.find((t) => t.id === design.themeId || t.slug === design.themeSlug);
+    const existingIdx = store.decorationDesigns.findIndex(
+      (d) => d.id === design.id || d.slug === cleanSlug
+    );
+    const designId = existingIdx >= 0 ? store.decorationDesigns[existingIdx].id : design.id || `design-${Date.now()}`;
+
+    const record: DecorationDesign = {
+      id: designId,
+      title: design.title.trim().slice(0, 200),
+      slug: cleanSlug,
+      occasionId: occ ? occ.id : String(design.occasionId),
+      occasionSlug: occ ? occ.slug : String(design.occasionSlug || 'wedding'),
+      themeId: thm ? thm.id : String(design.themeId),
+      themeSlug: thm ? thm.slug : String(design.themeSlug || 'royal-gold-wedding'),
+      mainImage: String(design.mainImage ?? (existingIdx >= 0 ? store.decorationDesigns[existingIdx].mainImage : '')).trim(),
+      galleryImages: Array.isArray(design.galleryImages)
+        ? design.galleryImages.map((g) => String(g).trim()).filter(Boolean)
+        : existingIdx >= 0
+          ? store.decorationDesigns[existingIdx].galleryImages
+          : [],
+      shortDescription: String(design.shortDescription || '').trim().slice(0, 500),
+      fullDescription: String(design.fullDescription || design.shortDescription || '').trim().slice(0, 3000),
+      decorationArea: (design.decorationArea as any) || 'Stage / Mandap',
+      recommendedGuestCount: String(design.recommendedGuestCount || '100 - 300 Guests').trim().slice(0, 100),
+      indoorOutdoor: design.indoorOutdoor || 'both',
+      estimatedBudgetRange: String(design.estimatedBudgetRange || '₹25,000 – ₹75,000').trim().slice(0, 120),
+      tags: Array.isArray(design.tags)
+        ? design.tags.map((t: string) => String(t).trim()).filter(Boolean)
+        : existingIdx >= 0
+          ? store.decorationDesigns[existingIdx].tags
+          : [],
+      featured: Boolean(design.featured),
+      status: design.status === 'draft' ? 'draft' : 'published',
+      ownerId: 'system-admin',
+      createdAt: existingIdx >= 0 ? store.decorationDesigns[existingIdx].createdAt : now,
+      updatedAt: now,
+    };
+
+    if (existingIdx >= 0) {
+      store.decorationDesigns[existingIdx] = record;
+    } else {
+      store.decorationDesigns.unshift(record);
+    }
+
+    if (Array.isArray(productMappings)) {
+      store.designProducts = store.designProducts.filter((m) => m.designId !== designId);
+      const savedMappings: DesignProductMapping[] = [];
+      productMappings.forEach((m, index) => {
+        if (!m.productId && !m.sku) return;
+        const prod = store.products.find((p) => p.id === m.productId || p.sku === m.sku);
+        if (!prod) return;
+        savedMappings.push({
+          id: m.id || `dp-${designId}-${prod.id}-${index}`,
+          designId,
+          productId: prod.id,
+          sku: prod.sku,
+          recommendedQuantity: Math.max(1, Number(m.recommendedQuantity) || 1),
+          quantityUnit: (m.quantityUnit as any) || 'pcs',
+          isRequired: m.isRequired !== undefined ? Boolean(m.isRequired) : true,
+          displayOrder: Number(m.displayOrder) || index + 1,
+          notes: String(m.notes || '').trim().slice(0, 500),
+          ownerId: 'system-admin',
+          createdAt: now,
+          updatedAt: now,
+        });
+      });
+      store.designProducts.push(...savedMappings);
+    }
+
+    saveStore(store);
+    res.json({
+      decorationDesign: record,
+      decorationDesigns: store.decorationDesigns,
+      designProducts: store.designProducts,
+    });
+  });
+
+  app.delete('/api/decoration-designs/:id', (req, res) => {
+    const { id } = req.params;
+    const target = store.decorationDesigns.find((d) => d.id === id || d.slug === id);
+    if (target) {
+      store.decorationDesigns = store.decorationDesigns.filter((d) => d.id !== target.id);
+      store.designProducts = store.designProducts.filter((m) => m.designId !== target.id);
+      saveStore(store);
+    }
+    res.json({
+      ok: true,
+      decorationDesigns: store.decorationDesigns,
+      designProducts: store.designProducts,
+    });
+  });
+
+  // 7E. Packages & Package Product Mappings Create / Update / Delete
+  app.post('/api/packages', (req, res) => {
+    const { pkg } = req.body as {
+      pkg: Partial<DecorationPackage>;
+      productMappings?: Partial<PackageProductMapping>[];
+      mappings?: Partial<PackageProductMapping>[];
+    };
+    const productMappings: Partial<PackageProductMapping>[] | undefined =
+      req.body.productMappings || req.body.mappings;
+    if (!pkg || !pkg.name || !pkg.slug || !pkg.occasionId) {
+      res.status(400).json({ error: 'Package Name, Slug, and Occasion are required.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const cleanSlug = pkg.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const occ = store.occasions.find((o) => o.id === pkg.occasionId || o.slug === pkg.occasionSlug);
+    const thm = store.decorationThemes.find((t) => t.id === pkg.themeId || t.slug === pkg.themeSlug);
+    const existingIdx = store.packages.findIndex(
+      (p) => p.id === pkg.id || p.slug === cleanSlug
+    );
+    const packageId = existingIdx >= 0 ? store.packages[existingIdx].id : pkg.id || `pkg-${Date.now()}`;
+
+    const record: DecorationPackage = {
+      id: packageId,
+      name: pkg.name.trim().slice(0, 200),
+      slug: cleanSlug,
+      occasionId: occ ? occ.id : String(pkg.occasionId),
+      occasionSlug: occ ? occ.slug : String(pkg.occasionSlug || 'wedding'),
+      themeId: thm ? thm.id : String(pkg.themeId || ''),
+      themeSlug: thm ? thm.slug : String(pkg.themeSlug || ''),
+      coverImage: String(pkg.coverImage ?? (existingIdx >= 0 ? store.packages[existingIdx].coverImage : '')).trim(),
+      galleryImages: [],
+      description: String(pkg.description || '').trim().slice(0, 2000),
+      startingPrice: Math.max(0, Number(pkg.startingPrice) || 0),
+      guestCapacity: String(pkg.guestCapacity || '100 - 300 Guests').trim().slice(0, 100),
+      featured: Boolean(pkg.featured),
+      status: pkg.status === 'draft' ? 'draft' : 'published',
+      ownerId: 'system-admin',
+      createdAt: existingIdx >= 0 ? store.packages[existingIdx].createdAt : now,
+      updatedAt: now,
+    };
+
+    if (existingIdx >= 0) {
+      store.packages[existingIdx] = record;
+    } else {
+      store.packages.unshift(record);
+    }
+
+    if (Array.isArray(productMappings)) {
+      store.packageProducts = store.packageProducts.filter((m) => m.packageId !== packageId);
+      const savedMappings: PackageProductMapping[] = [];
+      productMappings.forEach((m, index) => {
+        if (!m.productId && !m.sku) return;
+        const prod = store.products.find((p) => p.id === m.productId || p.sku === m.sku);
+        if (!prod) return;
+        savedMappings.push({
+          id: m.id || `pp-${packageId}-${prod.id}-${index}`,
+          packageId,
+          productId: prod.id,
+          sku: prod.sku,
+          recommendedQuantity: Math.max(1, Number(m.recommendedQuantity) || 1),
+          quantityUnit: (m.quantityUnit as any) || 'pcs',
+          isRequired: m.isRequired !== undefined ? Boolean(m.isRequired) : true,
+          displayOrder: Number(m.displayOrder) || index + 1,
+          notes: String(m.notes || '').trim().slice(0, 500),
+          ownerId: 'system-admin',
+          createdAt: now,
+          updatedAt: now,
+        });
+      });
+      store.packageProducts.push(...savedMappings);
+    }
+
+    saveStore(store);
+    res.json({
+      pkg: record,
+      package: record,
+      packages: store.packages,
+      packageProducts: store.packageProducts,
+    });
+  });
+
+  app.delete('/api/packages/:id', (req, res) => {
+    const { id } = req.params;
+    const target = store.packages.find((p) => p.id === id || p.slug === id);
+    if (target) {
+      store.packages = store.packages.filter((p) => p.id !== target.id);
+      store.packageProducts = store.packageProducts.filter((m) => m.packageId !== target.id);
+      saveStore(store);
+    }
+    res.json({
+      ok: true,
+      packages: store.packages,
+      packageProducts: store.packageProducts,
+    });
   });
 
   // 8. Public Bulk Order Request Submission (No payment collected at submission)
@@ -691,7 +1064,7 @@ async function startServer() {
     const body = req.body as Partial<BulkOrder>;
     if (!body.customerName || !body.mobile || !body.address || !body.city || !body.state || !body.pinCode) {
       res.status(400).json({
-        error: 'Customer name, mobile number, delivery address, city, state, and PIN code are required.',
+        error: 'Customer name, mobile number, delivery/venue address, city, state, and PIN code are required.',
       });
       return;
     }
@@ -725,7 +1098,7 @@ async function startServer() {
       0
     );
     const itemsSummary = body.items
-      .map((i) => `${i.productName} (${i.requestedQuantity})`)
+      .map((i) => `${i.productName} (${i.requestedQuantity}${i.quantityUnit ? ` ${i.quantityUnit}` : ''})`)
       .join(', ')
       .slice(0, 2000);
 
@@ -748,7 +1121,24 @@ async function startServer() {
       campaignSlugs: Array.isArray(body.campaignSlugs)
         ? body.campaignSlugs.map((s) => String(s).trim()).filter(Boolean)
         : [String(body.campaignSlug || 'diwali-2026').trim()],
-      expectedDeliveryDate: String(body.expectedDeliveryDate || '').trim(),
+      occasionId: String(body.occasionId || '').trim().slice(0, 100),
+      occasionSlug: String(body.occasionSlug || '').trim().slice(0, 100),
+      occasionName: String(body.occasionName || '').trim().slice(0, 150),
+      decorationThemeId: String(body.decorationThemeId || '').trim().slice(0, 100),
+      decorationThemeSlug: String(body.decorationThemeSlug || '').trim().slice(0, 100),
+      decorationThemeName: String(body.decorationThemeName || '').trim().slice(0, 200),
+      selectedDesignIds: Array.isArray(body.selectedDesignIds)
+        ? body.selectedDesignIds.map((s) => String(s).trim()).filter(Boolean)
+        : [],
+      selectedDesignNames: Array.isArray(body.selectedDesignNames)
+        ? body.selectedDesignNames.map((s) => String(s).trim()).filter(Boolean)
+        : [],
+      packageId: String(body.packageId || '').trim().slice(0, 100),
+      packageName: String(body.packageName || '').trim().slice(0, 200),
+      eventDate: String(body.eventDate || '').trim().slice(0, 40),
+      venueLocation: String(body.venueLocation || body.address || '').trim().slice(0, 300),
+      guestCount: String(body.guestCount || '').trim().slice(0, 60),
+      expectedDeliveryDate: String(body.expectedDeliveryDate || body.eventDate || '').trim(),
       preferredContact: body.preferredContact || 'whatsapp',
       requirements: String(body.requirements || '').trim().slice(0, 2000),
       items: body.items.map((item) => ({
@@ -758,6 +1148,8 @@ async function startServer() {
         unitPrice: Number(item.unitPrice) || 0,
         mrp: Number(item.mrp) || Number(item.unitPrice) || 0,
         requestedQuantity: Math.max(1, Number(item.requestedQuantity) || 1),
+        quantityUnit: item.quantityUnit || 'pcs',
+        sourceLabel: item.sourceLabel || undefined,
       })),
       itemsSummary,
       totalQuantity,
@@ -782,7 +1174,7 @@ async function startServer() {
           id: `tl-${Date.now()}`,
           timestamp: now,
           actor: `${body.customerName.trim()} (Customer Portal)`,
-          action: `Bulk order inquiry submitted (${totalQuantity} units across ${body.items.length} SKU${body.items.length > 1 ? 's' : ''})`,
+          action: `Bulk order inquiry submitted (${totalQuantity} units across ${body.items.length} SKU${body.items.length > 1 ? 's' : ''}${body.occasionName ? ` · Occasion: ${body.occasionName}` : ''})`,
         },
       ],
       createdAt: now,
@@ -897,7 +1289,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Catalog Maker Pro server running on http://localhost:${PORT}`);
+    console.log(`DesiDiya — Catalog Maker Pro server running on http://localhost:${PORT}`);
   });
 }
 

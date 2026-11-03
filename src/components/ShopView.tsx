@@ -3,18 +3,31 @@ import {
   ArrowRight,
   Calendar,
   Copy,
-  ExternalLink,
+  Eye,
   Flame,
+  Layers,
   LayoutGrid,
   List,
   MessageSquare,
   Package,
   Search,
+  ShoppingBag,
   Sparkles,
   Star,
   Tag,
 } from 'lucide-react';
-import type { Campaign, CatalogTheme, Product } from '../types/catalog';
+import type {
+  BulkOrderItem,
+  Campaign,
+  CatalogTheme,
+  DecorationDesign,
+  DecorationPackage,
+  DecorationTheme,
+  DesignProductMapping,
+  Occasion,
+  PackageProductMapping,
+  Product,
+} from '../types/catalog';
 import {
   calculateDiscountPercent,
   doesProductBelongToCampaign,
@@ -23,8 +36,23 @@ import {
   isCampaignPubliclyActive,
 } from '../utils/catalogLogic';
 import { ProductVisual } from './ProductVisual';
+import {
+  DecorationDesignDetailSection,
+  DecorationIdeasGallerySection,
+  DecorationThemeDetailSection,
+  OccasionDetailSection,
+  OccasionsDirectorySection,
+} from './OccasionDiscoveryViews';
 
-export type StorefrontViewMode = 'home' | 'campaign' | 'all-products';
+export type StorefrontViewMode =
+  | 'home'
+  | 'campaign'
+  | 'all-products'
+  | 'occasions'
+  | 'occasion-detail'
+  | 'theme-detail'
+  | 'designs'
+  | 'design-detail';
 
 interface ShopViewProps {
   storefrontMode: StorefrontViewMode;
@@ -32,14 +60,42 @@ interface ShopViewProps {
   campaigns: Campaign[];
   themes: CatalogTheme[];
   activeTheme: CatalogTheme;
+  occasions?: Occasion[];
+  decorationThemes?: DecorationTheme[];
+  decorationDesigns?: DecorationDesign[];
+  designProducts?: DesignProductMapping[];
+  packages?: DecorationPackage[];
+  packageProducts?: PackageProductMapping[];
   selectedCampaignSlug: string;
+  selectedOccasionSlug?: string;
+  selectedDecorationThemeSlug?: string;
+  selectedDesignSlug?: string;
   globalSearchQuery?: string;
   onNavigateHome: () => void;
   onNavigateAllProducts: () => void;
+  onNavigateOccasions?: () => void;
+  onSelectOccasionSlug?: (slug: string) => void;
+  onSelectDecorationThemeSlug?: (slug: string) => void;
+  onNavigateDesigns?: () => void;
+  onSelectDesignSlug?: (slug: string) => void;
   onSelectCampaignSlug: (slug: string) => void;
   onOpenProductDetail: (product: Product) => void;
   onOpenBulkOrder: (product: Product, quantity?: number, campaignSlug?: string) => void;
   onOpenMultiBulkOrder: (campaignSlug?: string) => void;
+  onAddItemsToBasket?: (
+    items: BulkOrderItem[],
+    context?: {
+      occasionSlug?: string;
+      occasionName?: string;
+      decorationThemeSlug?: string;
+      decorationThemeName?: string;
+      designId?: string;
+      designTitle?: string;
+      packageId?: string;
+      packageName?: string;
+      openModalImmediately?: boolean;
+    }
+  ) => void;
 }
 
 export const ShopView: React.FC<ShopViewProps> = ({
@@ -48,14 +104,29 @@ export const ShopView: React.FC<ShopViewProps> = ({
   campaigns,
   themes,
   activeTheme,
+  occasions = [],
+  decorationThemes = [],
+  decorationDesigns = [],
+  designProducts = [],
+  packages = [],
+  packageProducts = [],
   selectedCampaignSlug,
+  selectedOccasionSlug = 'wedding',
+  selectedDecorationThemeSlug = 'royal-gold-wedding',
+  selectedDesignSlug = 'royal-sabyasachi-mandap-setup',
   globalSearchQuery = '',
   onNavigateHome,
   onNavigateAllProducts,
+  onNavigateOccasions = () => {},
+  onSelectOccasionSlug = () => {},
+  onSelectDecorationThemeSlug = () => {},
+  onNavigateDesigns = () => {},
+  onSelectDesignSlug = () => {},
   onSelectCampaignSlug,
   onOpenProductDetail,
   onOpenBulkOrder,
   onOpenMultiBulkOrder,
+  onAddItemsToBasket = () => {},
 }) => {
   const [localSearch, setLocalSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -73,7 +144,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
     [campaigns]
   );
 
-  // Requested campaign when in 'campaign' mode
   const requestedCampaign = useMemo(
     () => campaigns.find((c) => c.slug === selectedCampaignSlug) || null,
     [campaigns, selectedCampaignSlug]
@@ -84,7 +154,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
     [requestedCampaign]
   );
 
-  // Primary hero campaign for Homepage
   const heroCampaign = useMemo(
     () => publiclyActiveCampaigns[0] || campaigns[0] || null,
     [publiclyActiveCampaigns, campaigns]
@@ -104,7 +173,32 @@ export const ShopView: React.FC<ShopViewProps> = ({
     [products]
   );
 
-  // Helper to get active campaign objects for any product
+  const activeOccasions = useMemo(
+    () =>
+      occasions
+        .filter((o) => o.status === 'active')
+        .sort((a, b) => a.displayOrder - b.displayOrder),
+    [occasions]
+  );
+
+  const publishedDecorationThemes = useMemo(
+    () =>
+      decorationThemes
+        .filter((t) => t.status === 'published')
+        .sort((a, b) => a.displayOrder - b.displayOrder),
+    [decorationThemes]
+  );
+
+  const publishedDesigns = useMemo(
+    () => decorationDesigns.filter((d) => d.status === 'published'),
+    [decorationDesigns]
+  );
+
+  const publishedPackages = useMemo(
+    () => packages.filter((p) => p.status === 'published'),
+    [packages]
+  );
+
   const getProductCampaigns = (product: Product): Campaign[] => {
     return publiclyActiveCampaigns.filter((camp) => doesProductBelongToCampaign(product, camp));
   };
@@ -176,7 +270,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
     sortBy,
   ]);
 
-  // Curated Homepage Sections
   const featuredProducts = useMemo(
     () => activeProducts.filter((p) => p.featured).slice(0, 3),
     [activeProducts]
@@ -218,6 +311,110 @@ export const ShopView: React.FC<ShopViewProps> = ({
             ? 'rounded-2xl'
             : 'rounded-3xl';
 
+  // ============================================================================
+  // DESIDIYA OCCASION, THEME & DESIGN VIEWS
+  // ============================================================================
+  if (storefrontMode === 'occasions') {
+    return (
+      <OccasionsDirectorySection
+        occasions={occasions}
+        decorationThemes={decorationThemes}
+        decorationDesigns={decorationDesigns}
+        packages={packages}
+        onSelectOccasion={onSelectOccasionSlug}
+        onSelectDesign={onSelectDesignSlug}
+      />
+    );
+  }
+
+  if (storefrontMode === 'occasion-detail') {
+    const occ =
+      occasions.find((o) => o.slug === selectedOccasionSlug) ||
+      occasions[0];
+    if (occ) {
+      return (
+        <OccasionDetailSection
+          occasion={occ}
+          decorationThemes={decorationThemes}
+          decorationDesigns={decorationDesigns}
+          designProducts={designProducts}
+          packages={packages}
+          packageProducts={packageProducts}
+          products={products}
+          onNavigateOccasions={onNavigateOccasions}
+          onSelectTheme={onSelectDecorationThemeSlug}
+          onSelectDesign={onSelectDesignSlug}
+          onAddItemsToBasket={onAddItemsToBasket}
+          onOpenProductDetail={onOpenProductDetail}
+        />
+      );
+    }
+  }
+
+  if (storefrontMode === 'theme-detail') {
+    const thm =
+      decorationThemes.find((t) => t.slug === selectedDecorationThemeSlug) ||
+      decorationThemes[0];
+    if (thm) {
+      const occ =
+        occasions.find((o) => o.id === thm.occasionId || o.slug === thm.occasionSlug) || null;
+      return (
+        <DecorationThemeDetailSection
+          theme={thm}
+          occasion={occ}
+          decorationDesigns={decorationDesigns}
+          designProducts={designProducts}
+          packages={packages}
+          products={products}
+          onSelectOccasion={onSelectOccasionSlug}
+          onSelectDesign={onSelectDesignSlug}
+          onAddItemsToBasket={onAddItemsToBasket}
+        />
+      );
+    }
+  }
+
+  if (storefrontMode === 'designs') {
+    return (
+      <DecorationIdeasGallerySection
+        occasions={occasions}
+        decorationThemes={decorationThemes}
+        decorationDesigns={decorationDesigns}
+        designProducts={designProducts}
+        products={products}
+        onSelectDesign={onSelectDesignSlug}
+        onAddItemsToBasket={onAddItemsToBasket}
+      />
+    );
+  }
+
+  if (storefrontMode === 'design-detail') {
+    const des =
+      decorationDesigns.find((d) => d.slug === selectedDesignSlug) ||
+      decorationDesigns[0];
+    if (des) {
+      const occ =
+        occasions.find((o) => o.id === des.occasionId || o.slug === des.occasionSlug) || null;
+      const thm =
+        decorationThemes.find((t) => t.id === des.themeId || t.slug === des.themeSlug) || null;
+      return (
+        <DecorationDesignDetailSection
+          design={des}
+          occasion={occ}
+          theme={thm}
+          allDesigns={decorationDesigns}
+          designProducts={designProducts}
+          products={products}
+          onSelectOccasion={onSelectOccasionSlug}
+          onSelectTheme={onSelectDecorationThemeSlug}
+          onSelectDesign={onSelectDesignSlug}
+          onOpenProductDetail={onOpenProductDetail}
+          onAddItemsToBasket={onAddItemsToBasket}
+        />
+      );
+    }
+  }
+
   const renderProductCard = (product: Product, campaignContextSlug?: string) => {
     const discount = calculateDiscountPercent(product.sellingPrice, product.mrp);
     const productCamps = getProductCampaigns(product);
@@ -229,15 +426,12 @@ export const ShopView: React.FC<ShopViewProps> = ({
         key={product.id}
         className={`group flex flex-col overflow-hidden border border-stone-200 bg-white transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md ${radiusClass}`}
       >
-        {/* 4:3 Studio Product Imagery */}
         <div onClick={() => onOpenProductDetail(product)} className="cursor-pointer relative">
           <ProductVisual product={product} className="aspect-4/3 w-full" />
         </div>
 
-        {/* Card Content */}
         <div className="flex flex-1 flex-col justify-between p-5 space-y-4">
           <div className="space-y-2">
-            {/* Clean Unboxed Metadata per Zero-Pill Rule */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
               <span className="font-semibold uppercase tracking-wider text-stone-700">
                 {product.brand}
@@ -268,7 +462,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
               {product.description}
             </p>
 
-            {/* Associated Campaign Links */}
             {productCamps.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[11px] text-stone-500">
                 <Tag className="h-3 w-3 text-amber-600 shrink-0" />
@@ -289,7 +482,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
           </div>
 
           <div className="space-y-3 pt-2 border-t border-stone-100">
-            {/* Rating & Availability */}
             <div className="flex items-center justify-between text-xs text-stone-500 tabular-nums">
               <span className="inline-flex items-center gap-1 font-medium text-stone-700">
                 <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
@@ -314,7 +506,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
               </span>
             </div>
 
-            {/* Tabular Price Baseline */}
             <div className="flex items-baseline justify-between gap-2 tabular-nums">
               <div className="flex items-baseline gap-2">
                 <span className="text-lg font-bold text-stone-900">
@@ -333,7 +524,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
               )}
             </div>
 
-            {/* Marketplace Links */}
             {(product.amazonUrl || product.flipkartUrl || product.meeshoUrl || product.websiteUrl) && (
               <div className="flex flex-wrap items-center gap-2.5 text-xs text-stone-500">
                 <span>Single unit:</span>
@@ -380,7 +570,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
               </div>
             )}
 
-            {/* Primary CTAs: Buy in Bulk + View Details */}
             <div className="grid grid-cols-5 gap-2 pt-1">
               <button
                 type="button"
@@ -456,16 +645,14 @@ export const ShopView: React.FC<ShopViewProps> = ({
 
     return (
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Breadcrumb */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-stone-500">
           <button type="button" onClick={onNavigateHome} className="hover:text-stone-900 underline">
-            All Campaigns
+            DesiDiya Home
           </button>
           <span>/</span>
           <span className="font-semibold text-stone-900">{requestedCampaign.name}</span>
         </nav>
 
-        {/* Dedicated Campaign Banner */}
         <section
           className={`relative overflow-hidden border border-stone-800 bg-stone-950 text-stone-50 p-6 sm:p-10 ${radiusClass}`}
         >
@@ -540,7 +727,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
           </div>
         </section>
 
-        {/* Campaign Filter & Search Controls */}
         <section className="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
@@ -619,14 +805,10 @@ export const ShopView: React.FC<ShopViewProps> = ({
           </div>
         </section>
 
-        {/* Campaign Products Grid */}
         {filteredProducts.length === 0 ? (
           <div className="rounded-xl border border-stone-200 bg-white p-12 text-center space-y-3">
             <p className="text-base font-semibold text-stone-900">
               No matching products in {requestedCampaign.name}
-            </p>
-            <p className="text-xs text-stone-500 max-w-md mx-auto">
-              Try clearing your search or category filter, or explore other active campaigns.
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
@@ -646,7 +828,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
                 onClick={onNavigateHome}
                 className="rounded-lg border border-stone-300 px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
               >
-                Back to All Campaigns
+                Back to DesiDiya Home
               </button>
             </div>
           </div>
@@ -668,10 +850,10 @@ export const ShopView: React.FC<ShopViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-6">
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-amber-700">
-              Complete B2B &amp; Wholesale Directory
+              Complete B2B &amp; Wholesale Product Directory
             </div>
             <h1 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-1">
-              All Products &amp; Campaign Collections ({activeProducts.length} SKUs)
+              Shop All Decoration &amp; Gifting Products ({activeProducts.length} SKUs)
             </h1>
           </div>
           <button
@@ -684,7 +866,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
           </button>
         </div>
 
-        {/* Filter Bar */}
         <section className="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
@@ -858,11 +1039,10 @@ export const ShopView: React.FC<ShopViewProps> = ({
   }
 
   // ============================================================================
-  // MODE C: CAMPAIGN-BASED PUBLIC HOMEPAGE (/)
+  // MODE C: DESIDIYA OCCASION-BASED DECORATION & BULK SHOPPING HOMEPAGE (/)
   // ============================================================================
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-14">
-      {/* If globalSearchQuery is active on homepage, show immediate search results */}
       {effectiveSearch && (
         <section className="space-y-4">
           <div className="flex items-center justify-between">
@@ -891,74 +1071,463 @@ export const ShopView: React.FC<ShopViewProps> = ({
         </section>
       )}
 
-      {/* 3. Hero Banner Highlighting the Active Campaign */}
-      {heroCampaign && (
-        <section
-          className={`relative overflow-hidden border border-stone-800 bg-stone-950 text-stone-50 p-6 sm:p-10 lg:p-12 ${radiusClass}`}
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-7 space-y-4">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
-                <span className="font-bold uppercase tracking-widest">
-                  {heroCampaign.promotionalHeadline || `Featured Campaign · ${heroCampaign.name}`}
-                </span>
-              </div>
-
-              <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white">
-                {heroCampaign.bannerTitle || heroCampaign.name}
-              </h1>
-
-              <p className="text-sm sm:text-base text-stone-300 max-w-2xl leading-relaxed">
-                {heroCampaign.bannerSubtitle || heroCampaign.description}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => onSelectCampaignSlug(heroCampaign.slug)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-5 py-3 text-xs font-bold text-stone-950 hover:bg-amber-400 transition-colors"
-                >
-                  Explore {heroCampaign.name}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenMultiBulkOrder(heroCampaign.slug)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-5 py-3 text-xs font-semibold text-white hover:bg-stone-800 transition-colors"
-                >
-                  <Package className="h-4 w-4 text-amber-400" />
-                  Request Custom Bulk Quote
-                </button>
-              </div>
+      {/* 1. Hero Banner: DesiDiya Occasion-Based Decoration & Bulk Shopping */}
+      <section
+        className={`relative overflow-hidden border border-stone-800 bg-stone-950 text-stone-50 p-6 sm:p-10 lg:p-12 ${radiusClass}`}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="text-xs font-bold uppercase tracking-widest text-amber-400">
+              DesiDiya · Occasion-Based Decoration Discovery &amp; B2B Bulk Shopping
             </div>
 
-            <div className="lg:col-span-5">
-              <div
-                onClick={() => onSelectCampaignSlug(heroCampaign.slug)}
-                className="cursor-pointer overflow-hidden rounded-xl border border-stone-800 bg-stone-900 group"
+            <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white">
+              Select an Occasion, Explore Decoration Designs &amp; Order Every Product in Bulk
+            </h1>
+
+            <p className="text-sm sm:text-base text-stone-300 max-w-2xl leading-relaxed">
+              From Royal Gold Wedding Mandaps and Floral Pastel Archways to Executive Corporate Galas and Sovereign
+              Diwali Courtyards—inspect the exact brassware, LED lighting, and backdrops used in every design and build
+              your custom bulk inquiry in seconds.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onNavigateOccasions}
+                className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-5 py-3 text-xs font-bold text-stone-950 hover:bg-amber-400 transition-colors"
               >
-                <ProductVisual
-                  product={{
-                    name: heroCampaign.name,
-                    brand: 'Active Campaign',
-                    category: heroCampaign.slug,
-                    imageUrl: heroCampaign.bannerImageUrl || activeProducts[0]?.imageUrl || '',
-                  }}
-                  className="aspect-16/10 w-full transition-transform duration-300 group-hover:scale-102"
-                />
-              </div>
+                Explore Occasions &amp; Themes
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onNavigateDesigns}
+                className="inline-flex items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-5 py-3 text-xs font-semibold text-white hover:bg-stone-800 transition-colors"
+              >
+                <Sparkles className="h-4 w-4 text-amber-400" />
+                Browse Decoration Ideas ({publishedDesigns.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenMultiBulkOrder(heroCampaign?.slug)}
+                className="inline-flex items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-4 py-3 text-xs font-semibold text-stone-200 hover:bg-stone-800 transition-colors"
+              >
+                <Package className="h-4 w-4 text-amber-400" />
+                Request Custom Bulk Quote
+              </button>
             </div>
+          </div>
+
+          <div className="lg:col-span-5">
+            <div
+              onClick={() =>
+                publishedDesigns[0]
+                  ? onSelectDesignSlug(publishedDesigns[0].slug)
+                  : onNavigateOccasions()
+              }
+              className="cursor-pointer overflow-hidden rounded-xl border border-stone-800 bg-stone-900 group"
+            >
+              <ProductVisual
+                product={{
+                  name: publishedDesigns[0]?.title || heroCampaign?.name || 'Royal Mandap Setup',
+                  brand: 'Shoppable Decoration Scene',
+                  category: 'DesiDiya',
+                  imageUrl:
+                    publishedDesigns[0]?.mainImage ||
+                    heroCampaign?.bannerImageUrl ||
+                    activeProducts[0]?.imageUrl ||
+                    '',
+                }}
+                className="aspect-16/10 w-full transition-transform duration-300 group-hover:scale-102"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. Shop by Occasion & Celebration Type */}
+      {activeOccasions.length > 0 && (
+        <section className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                1. Choose Your Event or Celebration
+              </div>
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
+                Browse Decoration by Occasion
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateOccasions}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-700 hover:text-amber-700"
+            >
+              View All {activeOccasions.length} Occasions <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {activeOccasions.slice(0, 8).map((occ) => {
+              const occThemesCount = publishedDecorationThemes.filter(
+                (t) => t.occasionId === occ.id || t.occasionSlug === occ.slug
+              ).length;
+              const occDesignsCount = publishedDesigns.filter(
+                (d) => d.occasionId === occ.id || d.occasionSlug === occ.slug
+              ).length;
+
+              return (
+                <div
+                  key={occ.id}
+                  onClick={() => onSelectOccasionSlug(occ.slug)}
+                  className="cursor-pointer group flex flex-col justify-between overflow-hidden rounded-2xl border border-stone-200 bg-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div>
+                    <div className="overflow-hidden border-b border-stone-100 bg-stone-900">
+                      <ProductVisual
+                        product={{
+                          name: occ.name,
+                          brand: `${occThemesCount} Themes · ${occDesignsCount} Designs`,
+                          category: 'Occasion',
+                          imageUrl: occ.coverImage || occ.bannerImage,
+                        }}
+                        className="aspect-16/10 w-full transition-transform duration-300 group-hover:scale-102"
+                      />
+                    </div>
+                    <div className="p-4 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] text-stone-500 tabular-nums">
+                        <span className="font-semibold uppercase tracking-wider text-amber-700">
+                          {occThemesCount} Themes
+                        </span>
+                        <span>{occDesignsCount} Designs</span>
+                      </div>
+                      <h3 className="font-serif text-lg font-bold text-stone-900 group-hover:text-amber-700 transition-colors">
+                        {occ.name}
+                      </h3>
+                      <p className="text-xs text-stone-600 line-clamp-2 leading-relaxed">
+                        {occ.description}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="px-4 pb-4 pt-1">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-stone-900 group-hover:text-amber-700">
+                      Explore {occ.name} <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* 4. Horizontal Campaign Cards / Responsive Campaign Grid */}
+      {/* 3. Shoppable Decoration Designs & Inspiration Gallery */}
+      {publishedDesigns.length > 0 && (
+        <section className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                2. Discover All Products Used in Real Setups
+              </div>
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
+                Featured Decoration Designs &amp; Venue Setups
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateDesigns}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-700 hover:text-amber-700"
+            >
+              View All {publishedDesigns.length} Decoration Designs <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
+            {publishedDesigns.slice(0, 6).map((design) => {
+              const mappings = designProducts.filter((m) => m.designId === design.id);
+              const occ = occasions.find((o) => o.id === design.occasionId || o.slug === design.occasionSlug);
+              const estimatedTotal = mappings.reduce((sum, m) => {
+                const prod = products.find((p) => p.id === m.productId || p.sku === m.sku);
+                return sum + (prod ? prod.sellingPrice * m.recommendedQuantity : 0);
+              }, 0);
+
+              return (
+                <article
+                  key={design.id}
+                  className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-stone-200 bg-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div>
+                    <div
+                      onClick={() => onSelectDesignSlug(design.slug)}
+                      className="cursor-pointer overflow-hidden border-b border-stone-100 bg-stone-900"
+                    >
+                      <ProductVisual
+                        product={{
+                          name: design.title,
+                          brand: design.decorationArea,
+                          category: occ?.name || 'Decoration',
+                          imageUrl: design.mainImage,
+                        }}
+                        className="aspect-16/10 w-full transition-transform duration-300 group-hover:scale-102"
+                      />
+                    </div>
+                    <div className="p-5 space-y-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
+                        <span className="font-bold uppercase text-amber-700">
+                          {occ?.name || design.occasionSlug}
+                        </span>
+                        <span>·</span>
+                        <span>{design.decorationArea}</span>
+                        <span>·</span>
+                        <span>{design.recommendedGuestCount}</span>
+                      </div>
+                      <h3 className="font-serif text-xl font-bold text-stone-900">
+                        <button
+                          type="button"
+                          onClick={() => onSelectDesignSlug(design.slug)}
+                          className="text-left hover:text-amber-700 transition-colors"
+                        >
+                          {design.title}
+                        </button>
+                      </h3>
+                      <p className="text-xs text-stone-600 line-clamp-2 leading-relaxed">
+                        {design.shortDescription}
+                      </p>
+                      <div className="flex items-center justify-between pt-2 border-t border-stone-100 text-xs tabular-nums">
+                        <span className="text-stone-600">
+                          <strong className="text-stone-900">{mappings.length} SKUs</strong> Mapped
+                        </span>
+                        <span className="font-bold text-stone-900">
+                          Est. {formatINR(estimatedTotal)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-5 pb-5 pt-1 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectDesignSlug(design.slug)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      See Products ({mappings.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const bulkItems: BulkOrderItem[] = [];
+                        mappings.forEach((m) => {
+                          const prod = products.find((p) => p.id === m.productId || p.sku === m.sku);
+                          if (prod) {
+                            bulkItems.push({
+                              productId: prod.id,
+                              sku: prod.sku,
+                              productName: prod.name,
+                              unitPrice: prod.sellingPrice,
+                              mrp: prod.mrp,
+                              requestedQuantity: m.recommendedQuantity,
+                              quantityUnit: m.quantityUnit,
+                              sourceLabel: `Design: ${design.title}`,
+                            });
+                          }
+                        });
+                        onAddItemsToBasket(bulkItems, {
+                          occasionSlug: design.occasionSlug,
+                          occasionName: occ?.name || design.occasionSlug,
+                          decorationThemeSlug: design.themeSlug,
+                          designId: design.id,
+                          designTitle: design.title,
+                          openModalImmediately: true,
+                        });
+                      }}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-xs font-semibold text-stone-800 hover:bg-stone-50"
+                    >
+                      Inquire Design
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 4. Curated Decoration Themes */}
+      {publishedDecorationThemes.length > 0 && (
+        <section className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                3. Explore by Color Palette &amp; Aesthetic
+              </div>
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
+                Signature Event Decoration Themes
+              </h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {publishedDecorationThemes.slice(0, 6).map((thm) => {
+              const occ = occasions.find((o) => o.id === thm.occasionId || o.slug === thm.occasionSlug);
+              return (
+                <div
+                  key={thm.id}
+                  onClick={() => onSelectDecorationThemeSlug(thm.slug)}
+                  className="cursor-pointer group rounded-2xl border border-stone-200 bg-white overflow-hidden hover:shadow-md transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="bg-stone-900 border-b border-stone-100">
+                      <ProductVisual
+                        product={{
+                          name: thm.title,
+                          brand: thm.style,
+                          category: occ?.name || 'Theme',
+                          imageUrl: thm.coverImage,
+                        }}
+                        className="aspect-16/10 w-full"
+                      />
+                    </div>
+                    <div className="p-5 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-stone-500">
+                        <span className="font-bold uppercase text-amber-700">
+                          {occ?.name || thm.occasionSlug}
+                        </span>
+                        <span>{thm.style}</span>
+                      </div>
+                      <h3 className="font-serif text-xl font-bold text-stone-900 group-hover:text-amber-700">
+                        {thm.title}
+                      </h3>
+                      <p className="text-xs text-stone-600 line-clamp-2">{thm.description}</p>
+                      {thm.colorPalette && thm.colorPalette.length > 0 && (
+                        <div className="text-[11px] text-stone-500">
+                          Colors: <strong className="text-stone-700">{thm.colorPalette.join(' · ')}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-5 pb-4 pt-1">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-stone-900 group-hover:text-amber-700">
+                      View Theme Designs <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 5. Turnkey Bulk Decoration Packages */}
+      {publishedPackages.length > 0 && (
+        <section className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                4. Ready-to-Customize Wholesale Kits
+              </div>
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
+                Bulk Decoration Packages
+              </h2>
+              <p className="text-xs text-stone-500 mt-1">
+                Indicative starting prices based on recommended quantities; customize any item count before requesting
+                your formal quotation.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {publishedPackages.map((pkg) => {
+              const pkgMappings = packageProducts.filter((m) => m.packageId === pkg.id);
+              const occ = occasions.find((o) => o.id === pkg.occasionId || o.slug === pkg.occasionSlug);
+              return (
+                <div
+                  key={pkg.id}
+                  className="flex flex-col sm:flex-row overflow-hidden rounded-2xl border border-stone-200 bg-stone-50/50"
+                >
+                  <div className="sm:w-52 shrink-0 bg-stone-900">
+                    <ProductVisual
+                      product={{
+                        name: pkg.name,
+                        brand: `${pkgMappings.length} Products`,
+                        category: occ?.name || 'Package',
+                        imageUrl: pkg.coverImage,
+                      }}
+                      className="h-44 sm:h-full w-full"
+                    />
+                  </div>
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-bold uppercase text-amber-700">
+                        {occ?.name || pkg.occasionSlug} · {pkg.guestCapacity}
+                      </div>
+                      <h3 className="font-serif text-xl font-bold text-stone-900">{pkg.name}</h3>
+                      <p className="text-xs text-stone-600 line-clamp-2">{pkg.description}</p>
+                    </div>
+                    <div className="space-y-2.5 pt-2 border-t border-stone-200/80">
+                      <div className="flex items-baseline justify-between tabular-nums">
+                        <span className="text-xs text-stone-500">
+                          Includes <strong>{pkgMappings.length} SKUs</strong> · Starting at:
+                        </span>
+                        <span className="text-base font-bold text-stone-900">
+                          {formatINR(pkg.startingPrice)}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onSelectOccasionSlug(pkg.occasionSlug)}
+                          className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-100"
+                        >
+                          Customize Package
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const items: BulkOrderItem[] = [];
+                            pkgMappings.forEach((m) => {
+                              const prod = products.find((p) => p.id === m.productId || p.sku === m.sku);
+                              if (prod) {
+                                items.push({
+                                  productId: prod.id,
+                                  sku: prod.sku,
+                                  productName: prod.name,
+                                  unitPrice: prod.sellingPrice,
+                                  mrp: prod.mrp,
+                                  requestedQuantity: m.recommendedQuantity,
+                                  quantityUnit: m.quantityUnit,
+                                  sourceLabel: `Package: ${pkg.name}`,
+                                });
+                              }
+                            });
+                            onAddItemsToBasket(items, {
+                              occasionSlug: pkg.occasionSlug,
+                              occasionName: occ?.name || pkg.occasionSlug,
+                              packageId: pkg.id,
+                              packageName: pkg.name,
+                              openModalImmediately: true,
+                            });
+                          }}
+                          className="flex-1 rounded-lg bg-stone-900 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 transition-colors"
+                        >
+                          Add Package to Inquiry
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 6. Active Bulk Shopping Campaigns */}
       {publiclyActiveCampaigns.length > 0 && (
         <section className="space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
             <div>
               <div className="text-xs font-bold uppercase tracking-widest text-amber-700">
-                Shop by Occasion &amp; Wholesale Event
+                Seasonal Wholesale Promotions
               </div>
               <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
                 Active Bulk Shopping Campaigns
@@ -1041,7 +1610,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
         </section>
       )}
 
-      {/* 5. Featured Products */}
+      {/* 7. Featured Products */}
       {featuredProducts.length > 0 && (
         <section className="space-y-5">
           <div className="flex items-end justify-between">
@@ -1051,7 +1620,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
                 Curated Spotlight
               </div>
               <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
-                Featured Campaign Products
+                Featured Decoration &amp; Gifting Products
               </h2>
             </div>
             <button
@@ -1068,14 +1637,14 @@ export const ShopView: React.FC<ShopViewProps> = ({
         </section>
       )}
 
-      {/* 6. Best-Selling or Popular Products */}
+      {/* 8. Best-Selling or Popular Products */}
       {bestSellingProducts.length > 0 && (
         <section className="space-y-5">
           <div className="flex items-end justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-700">
                 <Flame className="h-3.5 w-3.5" />
-                Most Requested by Corporate &amp; Wholesale Buyers
+                Most Requested by Event Planners &amp; Wholesale Buyers
               </div>
               <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
                 Best-Selling Bulk Favorites
@@ -1088,26 +1657,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
         </section>
       )}
 
-      {/* 7. New Arrivals */}
-      {newArrivalProducts.length > 0 && (
-        <section className="space-y-5">
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">
-                Fresh Foundry &amp; Atelier Releases
-              </div>
-              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-0.5">
-                New Season Arrivals
-              </h2>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
-            {newArrivalProducts.map((p) => renderProductCard(p))}
-          </div>
-        </section>
-      )}
-
-      {/* 8. Special Bulk-Order Offers */}
+      {/* 9. Special Bulk-Order Offers */}
       {specialBulkOfferProducts.length > 0 && (
         <section className="rounded-3xl border border-amber-200 bg-amber-50/50 p-6 sm:p-8 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1116,7 +1666,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
                 Special Bulk-Order Tier Offers · 20%+ Below MRP
               </div>
               <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900">
-                High-Margin Wholesale &amp; Corporate Packs
+                High-Margin Event Decor &amp; Corporate Packs
               </h2>
               <p className="text-xs sm:text-sm text-stone-600 max-w-2xl">
                 Unlock additional 8%–15% volume slab discounts on orders of 25+ units with complimentary company logo

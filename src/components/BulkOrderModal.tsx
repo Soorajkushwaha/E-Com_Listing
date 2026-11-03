@@ -1,19 +1,44 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Plus, Trash2, X, MessageSquare, ShieldCheck } from 'lucide-react';
-import type { BulkOrder, BulkOrderItem, Campaign, Product } from '../types/catalog';
+import { CheckCircle2, Plus, Trash2, X, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
+import type {
+  BulkOrder,
+  BulkOrderItem,
+  Campaign,
+  DecorationDesign,
+  DecorationTheme,
+  Occasion,
+  Product,
+} from '../types/catalog';
 import {
   buildWhatsAppMessage,
   formatINR,
   resolveOrderCampaignAssociations,
 } from '../utils/catalogLogic';
 
+export interface BulkInquiryContext {
+  occasionSlug?: string;
+  occasionName?: string;
+  decorationThemeSlug?: string;
+  decorationThemeName?: string;
+  selectedDesignIds?: string[];
+  selectedDesignNames?: string[];
+  packageId?: string;
+  packageName?: string;
+  campaignSlug?: string;
+}
+
 interface BulkOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialItems: BulkOrderItem[];
+  onChangeBasketItems?: (items: BulkOrderItem[]) => void;
   allProducts: Product[];
   campaigns: Campaign[];
+  occasions?: Occasion[];
+  decorationThemes?: DecorationTheme[];
+  decorationDesigns?: DecorationDesign[];
   activeCampaignSlug?: string;
+  inquiryContext?: BulkInquiryContext;
   onSubmitOrder: (payload: Partial<BulkOrder>) => Promise<BulkOrder>;
 }
 
@@ -21,9 +46,13 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
   isOpen,
   onClose,
   initialItems,
+  onChangeBasketItems,
   allProducts,
   campaigns,
+  occasions = [],
+  decorationThemes = [],
   activeCampaignSlug = 'diwali-2026',
+  inquiryContext,
   onSubmitOrder,
 }) => {
   const [items, setItems] = useState<BulkOrderItem[]>(
@@ -36,6 +65,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
           unitPrice: p.sellingPrice,
           mrp: p.mrp,
           requestedQuantity: 25,
+          quantityUnit: 'pcs',
         }))
   );
 
@@ -44,6 +74,14 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
       setItems(initialItems);
     }
   }, [initialItems]);
+
+  const syncItems = (updater: (prev: BulkOrderItem[]) => BulkOrderItem[]) => {
+    setItems((prev) => {
+      const next = updater(prev);
+      onChangeBasketItems?.(next);
+      return next;
+    });
+  };
 
   const [selectedAddProductId, setSelectedAddProductId] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
@@ -58,11 +96,35 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
   const [gstNumber, setGstNumber] = useState('');
   const [campaignSlug, setCampaignSlug] = useState(activeCampaignSlug || 'diwali-2026');
 
+  // DesiDiya Occasion, Theme, Event Date, Venue & Guest Count State
+  const [occasionSlug, setOccasionSlug] = useState<string>(
+    inquiryContext?.occasionSlug || occasions[0]?.slug || 'wedding'
+  );
+  const [decorationThemeSlug, setDecorationThemeSlug] = useState<string>(
+    inquiryContext?.decorationThemeSlug || ''
+  );
+  const [selectedDesignNames, setSelectedDesignNames] = useState<string[]>(
+    inquiryContext?.selectedDesignNames || []
+  );
+  const [packageName, setPackageName] = useState<string>(inquiryContext?.packageName || '');
+  const [eventDate, setEventDate] = useState<string>('');
+  const [venueLocation, setVenueLocation] = useState<string>('');
+  const [guestCount, setGuestCount] = useState<string>('150 - 300 Guests');
+
   React.useEffect(() => {
     if (activeCampaignSlug && activeCampaignSlug !== 'all') {
       setCampaignSlug(activeCampaignSlug);
     }
   }, [activeCampaignSlug]);
+
+  React.useEffect(() => {
+    if (inquiryContext?.occasionSlug) setOccasionSlug(inquiryContext.occasionSlug);
+    if (inquiryContext?.decorationThemeSlug) setDecorationThemeSlug(inquiryContext.decorationThemeSlug);
+    if (inquiryContext?.selectedDesignNames && inquiryContext.selectedDesignNames.length > 0) {
+      setSelectedDesignNames(inquiryContext.selectedDesignNames);
+    }
+    if (inquiryContext?.packageName) setPackageName(inquiryContext.packageName);
+  }, [inquiryContext]);
 
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [preferredContact, setPreferredContact] = useState<'whatsapp' | 'phone' | 'email'>('whatsapp');
@@ -81,11 +143,11 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
 
   const handleUpdateQty = (idx: number, qty: number) => {
     const safe = Math.max(1, Math.min(100000, Math.round(qty) || 1));
-    setItems((prev) => prev.map((item, i) => (i === idx ? { ...item, requestedQuantity: safe } : item)));
+    syncItems((prev) => prev.map((item, i) => (i === idx ? { ...item, requestedQuantity: safe } : item)));
   };
 
   const handleRemoveItem = (idx: number) => {
-    setItems((prev) => prev.filter((_, i) => i !== idx));
+    syncItems((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleAddProduct = () => {
@@ -94,9 +156,9 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
     if (!prod) return;
     const existingIdx = items.findIndex((i) => i.productId === prod.id);
     if (existingIdx >= 0) {
-      handleUpdateQty(existingIdx, items[existingIdx].requestedQuantity + 25);
+      handleUpdateQty(existingIdx, items[existingIdx].requestedQuantity + 10);
     } else {
-      setItems((prev) => [
+      syncItems((prev) => [
         ...prev,
         {
           productId: prod.id,
@@ -104,7 +166,9 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
           productName: prod.name,
           unitPrice: prod.sellingPrice,
           mrp: prod.mrp,
-          requestedQuantity: 25,
+          requestedQuantity: 10,
+          quantityUnit: 'pcs',
+          sourceLabel: 'Catalog Add-On',
         },
       ]);
     }
@@ -130,7 +194,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
       return;
     }
     if (!address.trim() || !city.trim() || !stateName.trim() || pinCode.trim().length < 4) {
-      setErrorMsg('Please complete the delivery address, city, state, and PIN code.');
+      setErrorMsg('Please complete the venue/delivery address, city, state, and PIN code.');
       return;
     }
 
@@ -142,6 +206,9 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
         products: allProducts,
         campaigns,
       });
+
+      const occObj = occasions.find((o) => o.slug === occasionSlug);
+      const thmObj = decorationThemes.find((t) => t.slug === decorationThemeSlug);
 
       const created = await onSubmitOrder({
         customerName: customerName.trim(),
@@ -157,7 +224,20 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
         campaignId: campaignAssoc.campaignId,
         campaignSlug: campaignAssoc.campaignSlug,
         campaignSlugs: campaignAssoc.campaignSlugs,
-        expectedDeliveryDate,
+        occasionId: occObj?.id || '',
+        occasionSlug,
+        occasionName: occObj?.name || occasionSlug,
+        decorationThemeId: thmObj?.id || '',
+        decorationThemeSlug,
+        decorationThemeName: thmObj?.title || decorationThemeSlug,
+        selectedDesignIds: inquiryContext?.selectedDesignIds || [],
+        selectedDesignNames,
+        packageId: inquiryContext?.packageId || '',
+        packageName,
+        eventDate: eventDate || expectedDeliveryDate,
+        venueLocation: (venueLocation || address).trim(),
+        guestCount: guestCount.trim(),
+        expectedDeliveryDate: expectedDeliveryDate || eventDate,
         preferredContact,
         requirements: requirements.trim(),
         items,
@@ -188,10 +268,12 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
         <div className="flex items-center justify-between border-b border-stone-200 bg-stone-900 px-6 py-4 text-stone-50">
           <div>
             <h2 id="bulk-order-modal-title" className="text-lg font-semibold tracking-tight">
-              {confirmedOrder ? 'Bulk Order Inquiry Confirmed' : 'Request B2B Bulk Order Quotation'}
+              {confirmedOrder
+                ? 'Bulk Order Inquiry Confirmed'
+                : 'DesiDiya Unified Bulk Shopping & Event Quotation Basket'}
             </h2>
             <p className="text-xs text-stone-300">
-              No immediate online payment required · Custom B2B tier pricing &amp; GST invoice provided on review
+              Combine products from shop, occasion themes, decoration designs &amp; packages · No upfront payment
             </p>
           </div>
           <button
@@ -219,9 +301,17 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                   Thank you, <strong>{confirmedOrder.customerName}</strong>. Your inquiry for{' '}
                   <strong className="tabular-nums">{confirmedOrder.totalQuantity} units</strong> (Estimated Catalog
                   Value: <strong className="tabular-nums">{formatINR(confirmedOrder.estimatedAmount)}</strong>) has
-                  been logged. Our B2B desk will contact you on WhatsApp (
+                  been logged. Our DesiDiya B2B desk will contact you on WhatsApp (
                   <span className="tabular-nums">{confirmedOrder.whatsapp}</span>) with your formal quotation.
                 </p>
+                {confirmedOrder.occasionName && (
+                  <div className="text-xs text-stone-600 pt-1">
+                    <strong>Occasion:</strong> {confirmedOrder.occasionName}
+                    {confirmedOrder.decorationThemeName ? ` · Theme: ${confirmedOrder.decorationThemeName}` : ''}
+                    {confirmedOrder.eventDate ? ` · Event Date: ${confirmedOrder.eventDate}` : ''}
+                    {confirmedOrder.guestCount ? ` · Guests: ${confirmedOrder.guestCount}` : ''}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -232,9 +322,10 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                   <div key={item.sku} className="flex items-center justify-between py-2 text-xs">
                     <span>
                       <strong>{item.productName}</strong> · SKU: {item.sku}
+                      {item.sourceLabel ? ` (${item.sourceLabel})` : ''}
                     </span>
                     <span className="font-mono tabular-nums font-semibold">
-                      {item.requestedQuantity} units × {formatINR(item.unitPrice)} ={' '}
+                      {item.requestedQuantity} {item.quantityUnit || 'units'} × {formatINR(item.unitPrice)} ={' '}
                       {formatINR(item.requestedQuantity * item.unitPrice)}
                     </span>
                   </div>
@@ -257,7 +348,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 onClick={resetAndClose}
                 className="rounded-lg bg-stone-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-stone-800 transition-colors"
               >
-                Done &amp; Return to Catalog
+                Done &amp; Return to Storefront
               </button>
             </div>
           </div>
@@ -272,14 +363,45 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
               </div>
             )}
 
-            {/* Selected Products Section */}
+            {/* Selected Designs / Package Context Banner if applicable */}
+            {(selectedDesignNames.length > 0 || packageName) && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-stone-800 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-amber-900">
+                    Active Decoration Selection:{' '}
+                  </span>
+                  {selectedDesignNames.length > 0 && (
+                    <span>
+                      Designs: <strong>{selectedDesignNames.join(', ')}</strong>
+                    </span>
+                  )}
+                  {packageName && (
+                    <span>
+                      {selectedDesignNames.length > 0 ? ' · ' : ''}Package: <strong>{packageName}</strong>
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDesignNames([]);
+                    setPackageName('');
+                  }}
+                  className="text-[11px] font-semibold text-amber-800 underline"
+                >
+                  Clear Context Tag
+                </button>
+              </div>
+            )}
+
+            {/* 1. Selected Products & Quantities */}
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-semibold uppercase tracking-wider text-stone-600">
                   1. Selected Products &amp; Quantities ({items.length} SKU{items.length === 1 ? '' : 's'})
                 </label>
                 <div className="text-xs font-medium text-stone-700 tabular-nums">
-                  Total Units: <strong>{totalUnits}</strong> · Catalog Estimate:{' '}
+                  Total Quantity: <strong>{totalUnits}</strong> · Catalog Estimate:{' '}
                   <strong>{formatINR(estimatedSubtotal)}</strong>
                 </div>
               </div>
@@ -290,12 +412,15 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-stone-900 truncate">{item.productName}</div>
                       <div className="text-xs text-stone-500 tabular-nums">
-                        SKU: {item.sku} · Catalog Price: {formatINR(item.unitPrice)} / unit
+                        SKU: {item.sku} · {formatINR(item.unitPrice)} / {item.quantityUnit || 'unit'}
+                        {item.sourceLabel ? (
+                          <span className="ml-2 font-semibold text-amber-700">· {item.sourceLabel}</span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <label htmlFor={`qty-${item.sku}`} className="text-xs text-stone-600">
-                        Qty:
+                        Qty ({item.quantityUnit || 'pcs'}):
                       </label>
                       <input
                         id={`qty-${item.sku}`}
@@ -348,10 +473,109 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
               </div>
             </div>
 
-            {/* Customer Contact & Company Details */}
+            {/* 2. Occasion, Decoration Theme & Event Details */}
             <div className="space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wider text-stone-600">
-                2. Buyer &amp; Company Information
+                2. Occasion, Decoration Theme &amp; Event Details
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="bulk-occasion" className="block text-xs font-medium text-stone-700 mb-1">
+                    Occasion / Event Type
+                  </label>
+                  <select
+                    id="bulk-occasion"
+                    value={occasionSlug}
+                    onChange={(e) => setOccasionSlug(e.target.value)}
+                    className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
+                  >
+                    {occasions.length > 0 ? (
+                      occasions.map((o) => (
+                        <option key={o.id} value={o.slug}>
+                          {o.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="wedding">Wedding</option>
+                        <option value="birthday">Birthday &amp; Parties</option>
+                        <option value="corporate-events">Corporate Events</option>
+                        <option value="diwali">Diwali &amp; Festivals</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="bulk-dec-theme" className="block text-xs font-medium text-stone-700 mb-1">
+                    Selected Decoration Theme
+                  </label>
+                  <select
+                    id="bulk-dec-theme"
+                    value={decorationThemeSlug}
+                    onChange={(e) => setDecorationThemeSlug(e.target.value)}
+                    className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
+                  >
+                    <option value="">Custom / Multiple Themes</option>
+                    {decorationThemes.map((t) => (
+                      <option key={t.id} value={t.slug}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="bulk-guest-count" className="block text-xs font-medium text-stone-700 mb-1">
+                    Expected Guest Count
+                  </label>
+                  <input
+                    id="bulk-guest-count"
+                    type="text"
+                    placeholder="e.g. 250 Guests"
+                    value={guestCount}
+                    onChange={(e) => setGuestCount(e.target.value)}
+                    className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="bulk-event-date" className="block text-xs font-medium text-stone-700 mb-1">
+                    Event Date
+                  </label>
+                  <input
+                    id="bulk-event-date"
+                    type="date"
+                    value={eventDate}
+                    onChange={(e) => {
+                      setEventDate(e.target.value);
+                      if (!expectedDeliveryDate) setExpectedDeliveryDate(e.target.value);
+                    }}
+                    className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="bulk-venue-location" className="block text-xs font-medium text-stone-700 mb-1">
+                    Venue Name / Banquet Hall (Optional)
+                  </label>
+                  <input
+                    id="bulk-venue-location"
+                    type="text"
+                    placeholder="e.g. Taj Lands End Ballroom / Farm Venue"
+                    value={venueLocation}
+                    onChange={(e) => setVenueLocation(e.target.value)}
+                    className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Customer Contact & Company Details */}
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-stone-600">
+                3. Buyer &amp; Company Information
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -370,12 +594,12 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 </div>
                 <div>
                   <label htmlFor="bulk-company-name" className="block text-xs font-medium text-stone-700 mb-1">
-                    Business / Company Name (Optional)
+                    Event Planner / Company Name (Optional)
                   </label>
                   <input
                     id="bulk-company-name"
                     type="text"
-                    placeholder="e.g. Mehta FinCorp Pvt. Ltd."
+                    placeholder="e.g. Royal Events & Decor Pvt. Ltd."
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 focus:border-amber-600 focus:outline-none"
@@ -441,20 +665,20 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
               </div>
             </div>
 
-            {/* Delivery Address & Event */}
+            {/* 4. Delivery Address & Notes */}
             <div className="space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wider text-stone-600">
-                3. Delivery Location &amp; Occasion Details
+                4. Venue / Delivery Address &amp; Additional Requirements
               </div>
               <div>
                 <label htmlFor="bulk-address" className="block text-xs font-medium text-stone-700 mb-1">
-                  Full Delivery Address *
+                  Full Delivery / Venue Address *
                 </label>
                 <input
                   id="bulk-address"
                   type="text"
                   required
-                  placeholder="Building, Floor, Street, Area"
+                  placeholder="Building, Venue Name, Street, Area"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 focus:border-amber-600 focus:outline-none"
@@ -508,7 +732,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                 <div>
                   <label htmlFor="bulk-campaign" className="block text-xs font-medium text-stone-700 mb-1">
-                    Event / Campaign
+                    Campaign / Wholesale Tier
                   </label>
                   <select
                     id="bulk-campaign"
@@ -555,12 +779,12 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
 
               <div>
                 <label htmlFor="bulk-requirements" className="block text-xs font-medium text-stone-700 mb-1">
-                  Custom Branding, Packaging, or Multi-Address Dispatch Notes
+                  Additional Decoration, Color Customization, or Dispatch Notes
                 </label>
                 <textarea
                   id="bulk-requirements"
                   rows={2}
-                  placeholder="Mention logo engraving, custom sleeves, gift message cards, or delivery schedule..."
+                  placeholder="Mention mandap stage size, color customization, custom branding sleeves, or delivery schedule..."
                   value={requirements}
                   onChange={(e) => setRequirements(e.target.value)}
                   className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 focus:border-amber-600 focus:outline-none"

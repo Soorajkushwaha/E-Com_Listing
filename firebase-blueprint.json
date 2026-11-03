@@ -29,7 +29,7 @@
     },
     "Product": {
       "title": "Product",
-      "description": "Product catalog record shared between Catalog Builder and Public Shop.",
+      "description": "Product catalog record shared across Shop, Occasion Designs, and Bulk Packages.",
       "type": "object",
       "properties": {
         "sku": {
@@ -145,7 +145,7 @@
         },
         "featured": {
           "type": "boolean",
-          "description": "Whether product is featured in catalog hero/spotlight"
+          "description": "Whether product is featured in spotlight"
         },
         "sortOrder": {
           "type": "number",
@@ -259,7 +259,7 @@
         },
         "isPublic": {
           "type": "boolean",
-          "description": "Whether theme can be read by public catalog pages"
+          "description": "Whether theme can be read by public pages"
         },
         "ownerId": {
           "type": "string",
@@ -385,9 +385,547 @@
         "updatedAt"
       ]
     },
+    "Occasion": {
+      "title": "Occasion",
+      "description": "Event or celebration occasion (Wedding, Birthday, Corporate, Diwali, etc.).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Occasion display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-friendly occasion slug",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Occasion overview description",
+          "minLength": 0,
+          "maxLength": 1500
+        },
+        "coverImage": {
+          "type": "string",
+          "description": "Occasion card cover image URL",
+          "minLength": 0,
+          "maxLength": 10000
+        },
+        "bannerImage": {
+          "type": "string",
+          "description": "Occasion hero banner image URL",
+          "minLength": 0,
+          "maxLength": 10000
+        },
+        "icon": {
+          "type": "string",
+          "description": "Lucide icon identifier",
+          "minLength": 0,
+          "maxLength": 50
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Whether featured on homepage and navigation"
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "Display sort order"
+        },
+        "status": {
+          "type": "string",
+          "description": "Publication status",
+          "enum": ["active", "inactive", "draft"]
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": ["name", "slug", "status", "ownerId", "createdAt", "updatedAt"]
+    },
+    "DecorationTheme": {
+      "title": "DecorationTheme",
+      "description": "Decoration theme under an occasion (e.g. Royal Gold Wedding, Floral Pastel Wedding).",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Theme display title",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-friendly theme slug",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Theme aesthetic description",
+          "minLength": 0,
+          "maxLength": 1500
+        },
+        "coverImage": {
+          "type": "string",
+          "description": "Theme cover image URL",
+          "minLength": 0,
+          "maxLength": 10000
+        },
+        "decorationStyle": {
+          "type": "string",
+          "description": "Decoration style descriptor",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "occasionId": {
+          "type": "string",
+          "description": "Parent Occasion document ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "occasionSlug": {
+          "type": "string",
+          "description": "Parent Occasion URL slug",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Featured status"
+        },
+        "status": {
+          "type": "string",
+          "description": "Publishing status",
+          "enum": ["published", "draft", "archived"]
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Sort order"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "title",
+        "slug",
+        "occasionId",
+        "occasionSlug",
+        "status",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DecorationDesign": {
+      "title": "DecorationDesign",
+      "description": "Visual decoration design inspiration record linked to an occasion and theme.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Decoration design title",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-friendly design slug",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "mainImage": {
+          "type": "string",
+          "description": "Primary decoration image URL",
+          "minLength": 0,
+          "maxLength": 10000
+        },
+        "description": {
+          "type": "string",
+          "description": "Full design description",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "decorationArea": {
+          "type": "string",
+          "description": "Stage, Entrance, Table, Ceiling, etc.",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "themeId": {
+          "type": "string",
+          "description": "Associated DecorationTheme ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "themeSlug": {
+          "type": "string",
+          "description": "Associated DecorationTheme slug",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "occasionId": {
+          "type": "string",
+          "description": "Associated Occasion ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "occasionSlug": {
+          "type": "string",
+          "description": "Associated Occasion slug",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "recommendedGuestCount": {
+          "type": "string",
+          "description": "Recommended guest count range",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "indoorOutdoor": {
+          "type": "string",
+          "description": "Indoor/outdoor suitability",
+          "enum": ["Indoor", "Outdoor", "Both Indoor & Outdoor"]
+        },
+        "estimatedBudgetRange": {
+          "type": "string",
+          "description": "Optional estimated budget range",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Featured design status"
+        },
+        "status": {
+          "type": "string",
+          "description": "Active/inactive status",
+          "enum": ["active", "inactive", "draft"]
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "Display sort order"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "name",
+        "slug",
+        "themeId",
+        "themeSlug",
+        "occasionId",
+        "occasionSlug",
+        "status",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DesignProductMapping": {
+      "title": "DesignProductMapping",
+      "description": "Relational mapping linking an existing Product to a DecorationDesign with recommended quantity.",
+      "type": "object",
+      "properties": {
+        "designId": {
+          "type": "string",
+          "description": "Referenced DecorationDesign ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "productId": {
+          "type": "string",
+          "description": "Referenced existing Product ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sku": {
+          "type": "string",
+          "description": "Referenced Product SKU",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "recommendedQuantity": {
+          "type": "number",
+          "description": "Recommended quantity used in this design"
+        },
+        "quantityUnit": {
+          "type": "string",
+          "description": "Optional unit label (units, sets, pairs, curtains)",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "isRequired": {
+          "type": "boolean",
+          "description": "Whether product is required or optional in this design"
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "Display order on design page"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional placement or usage notes",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "designId",
+        "productId",
+        "sku",
+        "recommendedQuantity",
+        "isRequired",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DecorationPackage": {
+      "title": "DecorationPackage",
+      "description": "Customizable bulk decoration package linked to an occasion and theme.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Package title",
+          "minLength": 1,
+          "maxLength": 180
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-friendly package slug",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Package description",
+          "minLength": 0,
+          "maxLength": 1500
+        },
+        "occasionId": {
+          "type": "string",
+          "description": "Associated Occasion ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "occasionSlug": {
+          "type": "string",
+          "description": "Associated Occasion slug",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "themeId": {
+          "type": "string",
+          "description": "Associated DecorationTheme ID",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "themeSlug": {
+          "type": "string",
+          "description": "Associated DecorationTheme slug",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "mainImage": {
+          "type": "string",
+          "description": "Package cover image URL",
+          "minLength": 0,
+          "maxLength": 10000
+        },
+        "startingPrice": {
+          "type": "number",
+          "description": "Optional indicative starting price in INR"
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Featured package status"
+        },
+        "status": {
+          "type": "string",
+          "description": "Publishing status",
+          "enum": ["published", "draft", "archived"]
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "Display order"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "name",
+        "slug",
+        "occasionId",
+        "occasionSlug",
+        "status",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PackageProductMapping": {
+      "title": "PackageProductMapping",
+      "description": "Relational mapping linking an existing Product to a DecorationPackage with recommended quantity.",
+      "type": "object",
+      "properties": {
+        "packageId": {
+          "type": "string",
+          "description": "Referenced DecorationPackage ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "productId": {
+          "type": "string",
+          "description": "Referenced existing Product ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sku": {
+          "type": "string",
+          "description": "Referenced Product SKU",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "recommendedQuantity": {
+          "type": "number",
+          "description": "Recommended quantity in package"
+        },
+        "quantityUnit": {
+          "type": "string",
+          "description": "Optional unit label",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "isRequired": {
+          "type": "boolean",
+          "description": "Required or optional package item"
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "Display order"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional package item notes",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Administrator UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp"
+        }
+      },
+      "required": [
+        "packageId",
+        "productId",
+        "sku",
+        "recommendedQuantity",
+        "isRequired",
+        "ownerId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "BulkOrder": {
       "title": "BulkOrder",
-      "description": "B2B bulk order inquiry and quotation lifecycle record containing customer PII.",
+      "description": "B2B bulk order inquiry and quotation lifecycle record containing customer PII and occasion/design context.",
       "type": "object",
       "properties": {
         "orderRef": {
@@ -436,7 +974,7 @@
         },
         "address": {
           "type": "string",
-          "description": "Full delivery street address",
+          "description": "Full delivery or venue street address",
           "minLength": 1,
           "maxLength": 500
         },
@@ -469,6 +1007,36 @@
           "description": "Event or campaign identifier",
           "minLength": 0,
           "maxLength": 100
+        },
+        "occasionSlug": {
+          "type": "string",
+          "description": "Selected occasion slug",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "decorationThemeSlug": {
+          "type": "string",
+          "description": "Selected decoration theme slug",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "eventDate": {
+          "type": "string",
+          "description": "Event date",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "venueLocation": {
+          "type": "string",
+          "description": "Venue name or location",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "guestCount": {
+          "type": "string",
+          "description": "Expected guest count",
+          "minLength": 0,
+          "maxLength": 80
         },
         "expectedDeliveryDate": {
           "type": "string",
@@ -607,6 +1175,30 @@
     "/campaigns/{campaignId}": {
       "schema": { "$ref": "#/entities/Campaign" },
       "description": "Seasonal and B2B catalog campaigns."
+    },
+    "/occasions/{occasionId}": {
+      "schema": { "$ref": "#/entities/Occasion" },
+      "description": "Occasions and celebration categories (Wedding, Birthday, Corporate, Diwali, etc.)."
+    },
+    "/decorationThemes/{themeId}": {
+      "schema": { "$ref": "#/entities/DecorationTheme" },
+      "description": "Decoration themes associated with occasions."
+    },
+    "/decorationDesigns/{designId}": {
+      "schema": { "$ref": "#/entities/DecorationDesign" },
+      "description": "Decoration design gallery items under occasion themes."
+    },
+    "/designProducts/{mappingId}": {
+      "schema": { "$ref": "#/entities/DesignProductMapping" },
+      "description": "Relational mapping of existing products used in decoration designs."
+    },
+    "/packages/{packageId}": {
+      "schema": { "$ref": "#/entities/DecorationPackage" },
+      "description": "Customizable bulk decoration packages."
+    },
+    "/packageProducts/{mappingId}": {
+      "schema": { "$ref": "#/entities/PackageProductMapping" },
+      "description": "Relational mapping of existing products included in bulk decoration packages."
     },
     "/bulkOrders/{orderId}": {
       "schema": { "$ref": "#/entities/BulkOrder" },
