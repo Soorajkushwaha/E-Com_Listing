@@ -343,6 +343,39 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'fullName', 'email', 'accountType', 'accountStatus', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'photoURL', 'phoneNumber', 'whatsappNumber',
+          'businessName', 'accountType', 'deliveryAddressesJson', 'city', 'state',
+          'pincode', 'gstNumber', 'accountStatus', 'internalNotes', 'lastLoginAt',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 150 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000)) &&
+        (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
+        (!('whatsappNumber' in data) || (data.whatsappNumber is string && data.whatsappNumber.size() <= 25)) &&
+        (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 150)) &&
+        data.accountType in [
+          'Individual Customer', 'Business Buyer', 'Event Planner',
+          'Decorator', 'Wholesaler', 'Corporate Buyer'
+        ] &&
+        (!('deliveryAddressesJson' in data) || (data.deliveryAddressesJson is string && data.deliveryAddressesJson.size() <= 5000)) &&
+        (!('city' in data) || (data.city is string && data.city.size() <= 100)) &&
+        (!('state' in data) || (data.state is string && data.state.size() <= 100)) &&
+        (!('pincode' in data) || (data.pincode is string && data.pincode.size() <= 16)) &&
+        (!('gstNumber' in data) || (data.gstNumber is string && data.gstNumber.size() <= 30)) &&
+        data.accountStatus in ['active', 'suspended'] &&
+        (!('internalNotes' in data) || (data.internalNotes is string && data.internalNotes.size() <= 2000)) &&
+        (!('lastLoginAt' in data) || (data.lastLoginAt is string && data.lastLoginAt.size() <= 60)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     // Collection 1: /admins/{adminId}
     match /admins/{adminId} {
       allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
@@ -351,6 +384,32 @@ service cloud.firestore {
         incoming().uid == adminId && incoming().createdAt == request.time && isAdmin();
       allow update: if false;
       allow delete: if isVerifiedUser() && isValidId(adminId) && isAdmin();
+    }
+
+    // Collection 1B: /users/{userId} (PII Isolated to Owner or Admin)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser() && isValidId(userId) && isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        incoming().accountStatus == 'active' &&
+        (!('internalNotes' in incoming()) || incoming().internalNotes == '') &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().accountStatus == existing().accountStatus &&
+            incoming().get('internalNotes', '') == existing().get('internalNotes', '')
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isAdmin();
     }
 
     // Collection 2: /products/{productId}

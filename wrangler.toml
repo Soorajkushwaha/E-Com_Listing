@@ -1,4 +1,4 @@
-name = "catalog-maker-pro"
+name = "desidiya-storefront"
 main = "worker.ts"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
@@ -9,6 +9,7 @@ not_found_handling = "single-page-application"
 
 [vars]
 APP_ENV = "production"
+BRAND_NAME = "DesiDiya"
 
 # Configure sensitive AI keys via Wrangler secrets (never commit real secrets):
 # npx wrangler secret put GEMINI_API_KEY

@@ -8,16 +8,19 @@ export function exportQuotationToPdf(order: BulkOrder): void {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, pageWidth, 38, 'F');
+  doc.setFillColor(180, 20, 20);
+  doc.rect(0, 0, pageWidth, 40, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('times', 'bold');
-  doc.setFontSize(18);
-  doc.text('OFFICIAL B2B BULK ORDER QUOTATION', 15, 18);
+  doc.setFontSize(17);
+  doc.text('DESIDIYA — LIGHTING UP EVERY CELEBRATION', 15, 16);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.text('OFFICIAL B2B BULK ORDER QUOTATION', 15, 24);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
-  doc.text(`Order Ref: ${order.orderRef}   |   Status: ${order.status}`, 15, 27);
-  doc.text(`Date: ${order.quotationDate || order.createdAt.slice(0, 10)}`, pageWidth - 15, 27, {
+  doc.text(`Order Ref: ${order.orderRef}   |   Status: ${order.status}`, 15, 32);
+  doc.text(`Date: ${order.quotationDate || order.createdAt.slice(0, 10)}`, pageWidth - 15, 32, {
     align: 'right',
   });
 

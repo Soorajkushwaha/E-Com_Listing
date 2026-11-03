@@ -326,19 +326,68 @@ export interface BulkOrder {
   updatedAt: string;
 }
 
+export type CustomerAccountType =
+  | 'Individual Customer'
+  | 'Business Buyer'
+  | 'Event Planner'
+  | 'Decorator'
+  | 'Wholesaler'
+  | 'Corporate Buyer';
+
+export interface CustomerAddress {
+  id: string;
+  label: string;
+  recipientName: string;
+  phone: string;
+  streetAddress: string;
+  city: string;
+  state: string;
+  pincode: string;
+  isDefault: boolean;
+}
+
+export interface CustomerProfile {
+  uid: string;
+  fullName: string;
+  email: string;
+  photoURL: string;
+  phoneNumber: string;
+  whatsappNumber: string;
+  businessName: string;
+  accountType: CustomerAccountType;
+  deliveryAddresses: CustomerAddress[];
+  city: string;
+  state: string;
+  pincode: string;
+  gstNumber: string;
+  accountStatus: 'active' | 'suspended';
+  internalNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string;
+}
+
 export interface CustomerSummary {
   id: string;
+  uid?: string;
   customerName: string;
   companyName: string;
+  accountType?: CustomerAccountType;
+  accountStatus?: 'active' | 'suspended';
+  photoURL?: string;
   mobile: string;
   whatsapp: string;
   email: string;
   city: string;
   state: string;
+  pinCode?: string;
   gstNumber: string;
+  deliveryAddresses?: CustomerAddress[];
   orderCount: number;
   confirmedValue: number;
   lastOrderDate: string;
+  createdAt?: string;
+  lastLoginAt?: string;
   notes: string;
   orders: BulkOrder[];
 }

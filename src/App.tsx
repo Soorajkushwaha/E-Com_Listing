@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Package, Search, Sparkles } from 'lucide-react';
+import { LogIn, Package, Search, User } from 'lucide-react';
 import type {
   BulkOrder,
   BulkOrderItem,
   Campaign,
   CatalogTheme,
+  CustomerProfile,
   DecorationDesign,
   DecorationPackage,
   DecorationTheme,
@@ -28,15 +29,21 @@ import {
 import { formatINR, isCampaignPubliclyActive } from './utils/catalogLogic';
 import {
   auth,
+  batchImportProductsToFirestore,
   deleteCampaignFromFirestore,
   deleteDecorationDesignFromFirestore,
   deleteDecorationThemeFromFirestore,
   deleteOccasionFromFirestore,
   deletePackageFromFirestore,
   deleteProductFromFirestore,
+  ensureCustomerProfileInFirestore,
+  fetchActiveProductsFromFirestore,
+  fetchAllCustomersFromFirestore,
+  fetchCustomerOrdersFromFirestore,
   onAuthStateChanged,
   signInAdminWithGoogle,
   signOutAdmin,
+  signOutCustomer,
   syncBulkOrderToFirestore,
   syncCampaignToFirestore,
   syncDecorationDesignToFirestore,
@@ -45,19 +52,29 @@ import {
   syncPackageToFirestore,
   syncProductToFirestore,
   syncThemeToFirestore,
+  updateCustomerProfileInFirestore,
 } from './lib/firebase';
 import { ShopView, type StorefrontViewMode } from './components/ShopView';
 import { AdminDashboardView, type AdminSection } from './components/AdminDashboardView';
 import { BulkOrderModal, type BulkInquiryContext } from './components/BulkOrderModal';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { ProductEditorModal } from './components/ProductEditorModal';
+import { CustomerAuthModal } from './components/CustomerAuthModal';
+import {
+  CustomerAccountDashboard,
+  type CustomerAccountTab,
+} from './components/CustomerAccountDashboard';
+import type { BatchImportResult } from './components/ExcelImportPanel';
 
-type AppMode = 'shop' | 'admin';
+type AppMode = 'shop' | 'admin' | 'account';
+
+const ADMIN_BOOTSTRAPPED_EMAIL = 'simple.sooraj@gmail.com';
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('shop');
   const [storefrontMode, setStorefrontMode] = useState<StorefrontViewMode>('home');
   const [adminSection, setAdminSection] = useState<AdminSection>('overview');
+  const [accountTab, setAccountTab] = useState<CustomerAccountTab>('overview');
   const [selectedCampaignSlug, setSelectedCampaignSlug] = useState<string>('all');
   const [selectedOccasionSlug, setSelectedOccasionSlug] = useState<string>('wedding');
   const [selectedDecorationThemeSlug, setSelectedDecorationThemeSlug] =
@@ -81,9 +98,16 @@ export default function App() {
   const [packageProducts, setPackageProducts] =
     useState<PackageProductMapping[]>(INITIAL_PACKAGE_PRODUCTS);
   const [bulkOrders, setBulkOrders] = useState<BulkOrder[]>(INITIAL_BULK_ORDERS);
+  const [registeredCustomers, setRegisteredCustomers] = useState<CustomerProfile[]>([]);
   const [activeThemeId, setActiveThemeId] = useState<string>('theme-diwali-gold');
   const [previousThemeId, setPreviousThemeId] = useState<string>('theme-minimal-white');
   const [catalogViews, setCatalogViews] = useState<number>(1420);
+
+  // Customer Authentication & Profile State
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
+  const [customerOrders, setCustomerOrders] = useState<BulkOrder[]>([]);
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+  const [pendingBulkOrderAfterAuth, setPendingBulkOrderAfterAuth] = useState<boolean>(false);
 
   // Admin Authentication State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
@@ -111,48 +135,147 @@ export default function App() {
     }, 3500);
   }, []);
 
-  // Load state from backend API
+  // Merge Firestore products with API products without losing any imported SKUs
+  const mergeProductCatalogs = useCallback((baseProducts: Product[], extraProducts: Product[]): Product[] => {
+    const bySku = new Map<string, Product>();
+    for (const p of baseProducts) {
+      if (p?.sku) bySku.set(p.sku.toUpperCase(), p);
+    }
+    for (const p of extraProducts) {
+      if (p?.sku) {
+        const key = p.sku.toUpperCase();
+        const existing = bySku.get(key);
+        if (!existing || (p.updatedAt && existing.updatedAt && p.updatedAt >= existing.updatedAt)) {
+          bySku.set(key, p);
+        }
+      }
+    }
+    return Array.from(bySku.values());
+  }, []);
+
+  // Load state from backend API + Cloud Firestore persistent products
   const fetchAppState = useCallback(
     async (trackView = false, adminAuth = isAdminAuthenticated) => {
+      let apiProducts: Product[] = [];
       try {
         const resp = await fetch(`/api/state${trackView ? '?trackView=1' : ''}`, {
           headers: adminAuth ? { 'X-Admin-Session': 'authenticated' } : {},
         });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (Array.isArray(data.products) && data.products.length > 0) setProducts(data.products);
-        if (Array.isArray(data.themes) && data.themes.length > 0) setThemes(data.themes);
-        if (Array.isArray(data.campaigns) && data.campaigns.length > 0) setCampaigns(data.campaigns);
-        if (Array.isArray(data.occasions) && data.occasions.length > 0) setOccasions(data.occasions);
-        if (Array.isArray(data.decorationThemes) && data.decorationThemes.length > 0) {
-          setDecorationThemes(data.decorationThemes);
-        }
-        if (Array.isArray(data.decorationDesigns) && data.decorationDesigns.length > 0) {
-          setDecorationDesigns(data.decorationDesigns);
-        }
-        if (Array.isArray(data.designProducts) && data.designProducts.length > 0) {
-          setDesignProducts(data.designProducts);
-        }
-        if (Array.isArray(data.packages) && data.packages.length > 0) setPackages(data.packages);
-        if (Array.isArray(data.packageProducts) && data.packageProducts.length > 0) {
-          setPackageProducts(data.packageProducts);
-        }
-        if (data.activeThemeId) setActiveThemeId(data.activeThemeId);
-        if (data.previousThemeId) setPreviousThemeId(data.previousThemeId);
-        if (typeof data.catalogViews === 'number') setCatalogViews(data.catalogViews);
-        if (adminAuth && Array.isArray(data.bulkOrders)) {
-          setBulkOrders(data.bulkOrders);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data.products) && data.products.length > 0) {
+            apiProducts = data.products;
+            setProducts(data.products);
+          }
+          if (Array.isArray(data.themes) && data.themes.length > 0) setThemes(data.themes);
+          if (Array.isArray(data.campaigns) && data.campaigns.length > 0) setCampaigns(data.campaigns);
+          if (Array.isArray(data.occasions) && data.occasions.length > 0) setOccasions(data.occasions);
+          if (Array.isArray(data.decorationThemes) && data.decorationThemes.length > 0) {
+            setDecorationThemes(data.decorationThemes);
+          }
+          if (Array.isArray(data.decorationDesigns) && data.decorationDesigns.length > 0) {
+            setDecorationDesigns(data.decorationDesigns);
+          }
+          if (Array.isArray(data.designProducts) && data.designProducts.length > 0) {
+            setDesignProducts(data.designProducts);
+          }
+          if (Array.isArray(data.packages) && data.packages.length > 0) setPackages(data.packages);
+          if (Array.isArray(data.packageProducts) && data.packageProducts.length > 0) {
+            setPackageProducts(data.packageProducts);
+          }
+          if (data.activeThemeId) setActiveThemeId(data.activeThemeId);
+          if (data.previousThemeId) setPreviousThemeId(data.previousThemeId);
+          if (typeof data.catalogViews === 'number') setCatalogViews(data.catalogViews);
+          if (adminAuth && Array.isArray(data.bulkOrders)) {
+            setBulkOrders(data.bulkOrders);
+          }
+          if (adminAuth && Array.isArray(data.customers)) {
+            setRegisteredCustomers(data.customers);
+          }
         }
       } catch {
         // Fallback to initial seed state if offline
       }
+
+      // Hydrate persistent products from Cloud Firestore (ensures Excel imports persist on Cloudflare)
+      try {
+        const firestoreProducts = await fetchActiveProductsFromFirestore();
+        if (firestoreProducts.length > 0) {
+          setProducts((prev) =>
+            mergeProductCatalogs(apiProducts.length > 0 ? apiProducts : prev, firestoreProducts)
+          );
+        }
+      } catch {
+        // Ignore Firestore offline errors
+      }
+
+      if (adminAuth) {
+        try {
+          const fsCustomers = await fetchAllCustomersFromFirestore();
+          if (fsCustomers.length > 0) {
+            setRegisteredCustomers((prev) => {
+              const map = new Map<string, CustomerProfile>();
+              prev.forEach((c) => map.set(c.uid, c));
+              fsCustomers.forEach((c) => map.set(c.uid, c));
+              return Array.from(map.values());
+            });
+          }
+        } catch {
+          // Ignore if admin not signed in with Firebase Auth
+        }
+      }
     },
-    [isAdminAuthenticated]
+    [isAdminAuthenticated, mergeProductCatalogs]
   );
+
+  // Load customer's own orders from API and Firestore
+  const refreshCustomerOrders = useCallback(async (profile: CustomerProfile) => {
+    const mergedMap = new Map<string, BulkOrder>();
+    try {
+      const params = new URLSearchParams({
+        email: profile.email || '',
+        phone: profile.whatsappNumber || profile.phoneNumber || '',
+      });
+      const resp = await fetch(`/api/orders/customer/${encodeURIComponent(profile.uid)}?${params.toString()}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.orders)) {
+          data.orders.forEach((o: BulkOrder) => mergedMap.set(o.orderRef || o.id, o));
+        }
+      }
+    } catch {
+      // Ignore API error
+    }
+
+    try {
+      const fsOrders = await fetchCustomerOrdersFromFirestore(profile.uid);
+      fsOrders.forEach((o) => mergedMap.set(o.orderRef || o.id, o));
+    } catch {
+      // Ignore Firestore error
+    }
+
+    setCustomerOrders(
+      Array.from(mergedMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    );
+  }, []);
 
   const applyRouteFromPath = useCallback(
     (path: string, currentProducts: Product[]) => {
       setNotFoundSku(null);
+      if (path === '/login' || path === '/register') {
+        setAuthModalOpen(true);
+        setMode('shop');
+        return;
+      }
+      if (path === '/account' || path.startsWith('/account/')) {
+        const sub = path.replace('/account', '').replace(/^\//, '').split('/')[0];
+        if (sub === 'profile') setAccountTab('profile');
+        else if (sub === 'orders') setAccountTab('orders');
+        else if (sub === 'addresses') setAccountTab('addresses');
+        else setAccountTab('overview');
+        setMode('account');
+        return;
+      }
       if (path === '/occasions') {
         setStorefrontMode('occasions');
         setMode('shop');
@@ -260,19 +383,42 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchAppState, isAdminAuthenticated]);
 
-  // Listen to Firebase Auth state
+  // Listen to Firebase Auth state for both Customer and Admin sessions
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user && user.emailVerified) {
-        setIsAdminAuthenticated(true);
-        setAdminEmail(user.email);
-        sessionStorage.setItem('cmp_admin_auth', '1');
-        if (user.email) sessionStorage.setItem('cmp_admin_email', user.email);
-        fetchAppState(false, true);
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const profile = await ensureCustomerProfileInFirestore(user);
+          setCustomerProfile(profile);
+          // Sync customer profile to backend store as well
+          await fetch('/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profile),
+          }).catch(() => {});
+          await refreshCustomerOrders(profile);
+        } catch {
+          // Ignore transient profile sync error
+        }
+
+        if (
+          user.emailVerified &&
+          user.email &&
+          user.email.toLowerCase() === ADMIN_BOOTSTRAPPED_EMAIL.toLowerCase()
+        ) {
+          setIsAdminAuthenticated(true);
+          setAdminEmail(user.email);
+          sessionStorage.setItem('cmp_admin_auth', '1');
+          sessionStorage.setItem('cmp_admin_email', user.email);
+          fetchAppState(false, true);
+        }
+      } else {
+        setCustomerProfile(null);
+        setCustomerOrders([]);
       }
     });
     return () => unsub();
-  }, [fetchAppState]);
+  }, [fetchAppState, refreshCustomerOrders]);
 
   const activeTheme = useMemo(
     () => themes.find((t) => t.id === activeThemeId) || themes[0] || INITIAL_THEMES[0],
@@ -286,6 +432,10 @@ export default function App() {
 
   // Update SEO document title based on active view
   useEffect(() => {
+    if (mode === 'account') {
+      document.title = 'My Account — DesiDiya | Lighting Up Every Celebration';
+      return;
+    }
     if (mode === 'shop' && storefrontMode === 'occasion-detail') {
       const occ = occasions.find((o) => o.slug === selectedOccasionSlug);
       if (occ) {
@@ -315,11 +465,11 @@ export default function App() {
       }
     }
     if (mode === 'admin') {
-      document.title = 'Admin Console — DesiDiya Occasion & Bulk Order Management';
+      document.title = 'Admin Console — DesiDiya | Lighting Up Every Celebration';
     } else if (storefrontMode === 'all-products') {
-      document.title = 'Shop All Products — DesiDiya Occasion Decoration & Wholesale';
+      document.title = 'Shop All Products — DesiDiya | Lighting Up Every Celebration';
     } else {
-      document.title = 'DesiDiya — Occasion-Based Decoration Discovery & Bulk Shopping Platform';
+      document.title = 'DesiDiya — Lighting Up Every Celebration | Occasion Decoration & Bulk Shopping';
     }
   }, [
     mode,
@@ -393,6 +543,19 @@ export default function App() {
     setStorefrontMode('campaign');
     setSelectedCampaignSlug(slug);
     window.history.pushState({}, '', `/campaigns/${slug}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateAccount = (tab: CustomerAccountTab = 'overview') => {
+    if (!customerProfile) {
+      setPendingBulkOrderAfterAuth(false);
+      setAuthModalOpen(true);
+      return;
+    }
+    setMode('account');
+    setAccountTab(tab);
+    const subPath = tab === 'overview' ? '/account' : `/account/${tab}`;
+    window.history.pushState({}, '', subPath);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -516,10 +679,16 @@ export default function App() {
   };
 
   const handleSubmitBulkOrder = async (payload: Partial<BulkOrder>): Promise<BulkOrder> => {
+    const enrichedPayload: Partial<BulkOrder> = {
+      ...payload,
+      ownerId: customerProfile?.uid || payload.ownerId || 'customer-portal',
+      email: payload.email || customerProfile?.email || '',
+    };
+
     const resp = await fetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(enrichedPayload),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -527,9 +696,52 @@ export default function App() {
     }
     const created: BulkOrder = data.order;
     setBulkOrders((prev) => [created, ...prev]);
+    setCustomerOrders((prev) => [created, ...prev]);
     await syncBulkOrderToFirestore(created).catch(() => {});
     showToast(`Bulk Order Request ${created.orderRef} submitted!`);
     return created;
+  };
+
+  // Update Customer Profile in Firestore & Backend API
+  const handleUpdateCustomerProfile = async (
+    updates: Partial<CustomerProfile>
+  ): Promise<CustomerProfile> => {
+    if (!customerProfile) {
+      throw new Error('Customer session not found.');
+    }
+    const updated = await updateCustomerProfileInFirestore(customerProfile.uid, updates);
+    setCustomerProfile(updated);
+    await fetch('/api/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(() => {});
+    showToast('Your DesiDiya account profile has been updated.');
+    return updated;
+  };
+
+  // Admin Update Customer Notes & Account Status
+  const handleUpdateCustomerAdminNotes = async (
+    uid: string,
+    updates: { internalNotes: string; accountStatus: 'active' | 'suspended' }
+  ) => {
+    const existing = registeredCustomers.find((c) => c.uid === uid);
+    if (existing) {
+      const updated = await updateCustomerProfileInFirestore(uid, updates);
+      setRegisteredCustomers((prev) => prev.map((c) => (c.uid === uid ? updated : c)));
+    }
+    const resp = await fetch(`/api/customers/${encodeURIComponent(uid)}/admin`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data.customers)) {
+        setRegisteredCustomers(data.customers);
+      }
+    }
+    showToast('Saved customer CRM notes & status.');
   };
 
   const handleSaveProduct = async (productInput: Partial<Product>) => {
@@ -563,10 +775,12 @@ export default function App() {
     }
   };
 
+  // Phase 2: Full Excel Batch Import to API AND Cloud Firestore with Live Progress
   const handleBatchImportProducts = async (
     validProducts: Omit<Product, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'>[],
-    duplicateMode: 'update' | 'skip'
-  ) => {
+    duplicateMode: 'update' | 'skip',
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<BatchImportResult> => {
     const resp = await fetch('/api/products/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -574,16 +788,26 @@ export default function App() {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Batch import failed.');
+
+    const savedProducts: Product[] = Array.isArray(data.savedProducts) ? data.savedProducts : [];
     if (Array.isArray(data.products)) {
-      setProducts(data.products);
+      setProducts((prev) => mergeProductCatalogs(prev, data.products));
     }
-    if (Array.isArray(data.savedProducts)) {
-      for (const p of data.savedProducts.slice(0, 25)) {
-        await syncProductToFirestore(p).catch(() => {});
-      }
-    }
-    showToast(`Imported ${data.added} new and updated ${data.updated} products from Excel!`);
-    return { added: data.added, updated: data.updated, skipped: data.skipped };
+
+    // Write all imported products to Cloud Firestore in safe batches
+    const fsResult = await batchImportProductsToFirestore(savedProducts, onProgress);
+
+    showToast(
+      `Imported ${data.added} new and updated ${data.updated} products (${fsResult.firestoreSynced} synced to database)!`
+    );
+
+    return {
+      added: data.added,
+      updated: data.updated,
+      skipped: data.skipped,
+      firestoreSynced: fsResult.firestoreSynced,
+      firestoreError: fsResult.firestoreError,
+    };
   };
 
   const handleSaveAndActivateTheme = async (themeInput: Partial<CatalogTheme>, activate: boolean) => {
@@ -631,6 +855,9 @@ export default function App() {
     if (!resp.ok) throw new Error(data.error || 'Failed to update order.');
     if (Array.isArray(data.bulkOrders)) {
       setBulkOrders(data.bulkOrders);
+    }
+    if (data.order) {
+      await syncBulkOrderToFirestore(data.order).catch(() => {});
     }
     showToast(`Updated order ${data.order?.orderRef}`);
   };
@@ -801,10 +1028,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 text-stone-900">
-      {/* 1. Brand Header with DesiDiya Logo, Search & Occasion-Based Navigation */}
+      {/* 1. Official DesiDiya Brand Header with Logo, Search, Navigation & Customer Account */}
       <header className="sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur-xs">
-        <div className="mx-auto max-w-7xl flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-3">
-          {/* Brand Logo & Wordmark */}
+        <div className="mx-auto max-w-7xl flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-2.5">
+          {/* Official Uploaded DesiDiya Logo & Tagline */}
           <div className="flex items-center gap-3 shrink-0">
             <a
               href="/"
@@ -812,15 +1039,17 @@ export default function App() {
                 e.preventDefault();
                 navigateHome();
               }}
-              className="flex items-center gap-2 font-serif text-xl font-bold tracking-tight text-stone-950 whitespace-nowrap"
+              className="flex items-center gap-2.5 shrink-0"
+              aria-label="DesiDiya — Lighting Up Every Celebration"
             >
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-stone-900 text-amber-400">
-                <Sparkles className="h-4 w-4" />
-              </span>
-              <span>DesiDiya</span>
+              <img
+                src="/assets/aistudio/logo_3e12495b.png"
+                alt="DesiDiya — Lighting Up Every Celebration"
+                className="h-10 sm:h-11 w-auto object-contain"
+              />
             </a>
-            <span className="hidden xl:inline-block text-[11px] font-medium text-stone-400 border-l border-stone-200 pl-3">
-              Catalog Maker Pro · Occasion Decor &amp; Bulk Commerce
+            <span className="hidden xl:inline-block text-[11px] font-semibold text-amber-800 border-l border-stone-200 pl-3">
+              Lighting Up Every Celebration
             </span>
           </div>
 
@@ -846,7 +1075,7 @@ export default function App() {
           {/* Primary Navigation Links */}
           <nav
             aria-label="Primary navigation"
-            className="hidden md:flex items-center gap-4 text-xs font-semibold text-stone-600"
+            className="hidden md:flex items-center gap-3.5 text-xs font-semibold text-stone-600"
           >
             <a
               href="/"
@@ -933,7 +1162,7 @@ export default function App() {
                 e.preventDefault();
                 navigateOccasionSlug('corporate-events');
               }}
-              className={`hidden xl:inline hover:text-stone-950 transition-colors whitespace-nowrap shrink-0 ${
+              className={`hidden 2xl:inline hover:text-stone-950 transition-colors whitespace-nowrap shrink-0 ${
                 mode === 'shop' &&
                 storefrontMode === 'occasion-detail' &&
                 selectedOccasionSlug === 'corporate-events'
@@ -987,12 +1216,50 @@ export default function App() {
                 mode === 'admin' ? 'text-stone-950 underline underline-offset-4' : ''
               }`}
             >
-              Admin Console
+              Admin
             </a>
           </nav>
 
-          {/* Primary Bulk Orders / Inquiry Basket Action */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          {/* Customer Account + Bulk Orders Basket Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            {customerProfile ? (
+              <button
+                type="button"
+                onClick={() => navigateAccount('overview')}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                  mode === 'account'
+                    ? 'border-amber-600 bg-amber-50 text-amber-900'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                }`}
+              >
+                {customerProfile.photoURL ? (
+                  <img
+                    src={customerProfile.photoURL}
+                    alt={customerProfile.fullName}
+                    className="h-4 w-4 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User className="h-3.5 w-3.5 text-amber-700" />
+                )}
+                <span className="max-w-[100px] truncate">
+                  {customerProfile.fullName.split(' ')[0] || 'Account'}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingBulkOrderAfterAuth(false);
+                  setAuthModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-50 transition-colors whitespace-nowrap"
+              >
+                <LogIn className="h-3.5 w-3.5 text-amber-700" />
+                <span>Sign In</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => handleOpenMultiBulkOrder()}
@@ -1104,12 +1371,21 @@ export default function App() {
           </button>
           <button
             type="button"
+            onClick={() => navigateAccount('overview')}
+            className={`px-3 py-1 rounded-md whitespace-nowrap ${
+              mode === 'account' ? 'bg-amber-600 text-white' : ''
+            }`}
+          >
+            {customerProfile ? 'My Account' : 'Sign In'}
+          </button>
+          <button
+            type="button"
             onClick={() => navigateAdmin('overview')}
             className={`px-3 py-1 rounded-md whitespace-nowrap ${
               mode === 'admin' ? 'bg-stone-900 text-white' : ''
             }`}
           >
-            Admin Console
+            Admin
           </button>
         </div>
       </header>
@@ -1168,6 +1444,47 @@ export default function App() {
           />
         )}
 
+        {mode === 'account' &&
+          (customerProfile ? (
+            <CustomerAccountDashboard
+              customer={customerProfile}
+              customerOrders={customerOrders}
+              activeTab={accountTab}
+              onSelectTab={(tab) => navigateAccount(tab)}
+              onUpdateProfile={handleUpdateCustomerProfile}
+              onSignOut={async () => {
+                await signOutCustomer().catch(() => {});
+                setCustomerProfile(null);
+                setCustomerOrders([]);
+                navigateHome();
+                showToast('Signed out of your DesiDiya account.');
+              }}
+              onNavigateShop={navigateHome}
+              onOpenSignInModal={() => setAuthModalOpen(true)}
+            />
+          ) : (
+            <div className="mx-auto max-w-md px-4 py-16 text-center space-y-4">
+              <div className="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm space-y-4">
+                <img
+                  src="/assets/aistudio/logo_3e12495b.png"
+                  alt="DesiDiya — Lighting Up Every Celebration"
+                  className="mx-auto h-14 w-auto object-contain"
+                />
+                <h1 className="text-xl font-bold text-stone-900">Sign In to Your DesiDiya Account</h1>
+                <p className="text-xs text-stone-500">
+                  Access your saved profile, delivery addresses, bulk order inquiries, and official GST quotations.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAuthModalOpen(true)}
+                  className="w-full rounded-xl bg-stone-900 px-4 py-3 text-xs font-bold text-white hover:bg-amber-600 transition-colors"
+                >
+                  Sign In or Create Account
+                </button>
+              </div>
+            </div>
+          ))}
+
         {mode === 'admin' && (
           <AdminDashboardView
             isAuthenticated={isAdminAuthenticated}
@@ -1183,9 +1500,9 @@ export default function App() {
             onSignInDemoAdmin={(passcode) => {
               if (passcode.trim() === 'ADMIN-2026') {
                 setIsAdminAuthenticated(true);
-                setAdminEmail('simple.sooraj@gmail.com');
+                setAdminEmail(ADMIN_BOOTSTRAPPED_EMAIL);
                 sessionStorage.setItem('cmp_admin_auth', '1');
-                sessionStorage.setItem('cmp_admin_email', 'simple.sooraj@gmail.com');
+                sessionStorage.setItem('cmp_admin_email', ADMIN_BOOTSTRAPPED_EMAIL);
                 fetchAppState(false, true);
                 return true;
               }
@@ -1212,6 +1529,7 @@ export default function App() {
             packages={packages}
             packageProducts={packageProducts}
             bulkOrders={bulkOrders}
+            registeredCustomers={registeredCustomers}
             catalogViews={catalogViews}
             onOpenAddProduct={() => {
               setProductToEdit(null);
@@ -1226,6 +1544,7 @@ export default function App() {
             onSaveAndActivateTheme={handleSaveAndActivateTheme}
             onActivateExistingTheme={handleActivateExistingTheme}
             onUpdateOrder={handleUpdateOrder}
+            onUpdateCustomerAdminNotes={handleUpdateCustomerAdminNotes}
             onSaveCampaign={handleSaveCampaign}
             onDeleteCampaign={handleDeleteCampaign}
             onSaveOccasion={handleSaveOccasion}
@@ -1255,7 +1574,7 @@ export default function App() {
               </span>
               <div>
                 <div className="font-bold text-white">
-                  Unified Bulk Inquiry Basket · {totalBasketUnits} Total Units
+                  DesiDiya Bulk Inquiry Basket · {totalBasketUnits} Total Units
                 </div>
                 <div className="text-[11px] text-stone-400">
                   Indicative Estimate: <strong className="text-amber-300">{formatINR(totalBasketValue)}</strong>
@@ -1285,12 +1604,17 @@ export default function App() {
         </div>
       )}
 
-      {/* Footer with Occasion Links, Campaign Links & Contact Details */}
+      {/* Official DesiDiya Footer with Uploaded Logo, Occasion Links, Campaign Links & Account Links */}
       <footer className="border-t border-stone-200 bg-white px-6 py-10 text-xs text-stone-600">
         <div className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div className="space-y-2 md:col-span-1">
-            <div className="font-serif text-lg font-bold text-stone-900">
-              DesiDiya — Occasion Decoration &amp; Bulk Shopping
+          <div className="space-y-2.5 md:col-span-1">
+            <img
+              src="/assets/aistudio/logo_3e12495b.png"
+              alt="DesiDiya — Lighting Up Every Celebration"
+              className="h-11 w-auto object-contain"
+            />
+            <div className="font-serif text-base font-bold text-stone-900">
+              DesiDiya — Lighting Up Every Celebration
             </div>
             <p className="text-stone-500 leading-relaxed">
               Explore curated decoration themes for Weddings, Birthdays, Corporate Events, and Diwali. Discover every
@@ -1298,7 +1622,7 @@ export default function App() {
               quotations.
             </p>
             <div className="pt-1 text-stone-700 font-medium tabular-nums">
-              B2B Wholesale Desk: +91 98201 12233 · procurement@kansaheritage.in
+              B2B Wholesale Desk: +91 98201 12233 · support@desidiya.in
             </div>
           </div>
 
@@ -1346,8 +1670,17 @@ export default function App() {
           </div>
 
           <div className="space-y-2">
-            <div className="font-bold uppercase tracking-wider text-stone-900">Quick Links</div>
+            <div className="font-bold uppercase tracking-wider text-stone-900">Customer &amp; Admin Portal</div>
             <ul className="space-y-1.5">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigateAccount('overview')}
+                  className="hover:text-stone-900 hover:underline text-left font-semibold text-amber-800"
+                >
+                  {customerProfile ? `My Account (${customerProfile.fullName})` : 'Customer Sign In / Register'}
+                </button>
+              </li>
               <li>
                 <a
                   href="/designs"
@@ -1383,14 +1716,14 @@ export default function App() {
               </li>
               <li>
                 <a
-                  href="/admin/occasions"
+                  href="/admin"
                   onClick={(e) => {
                     e.preventDefault();
-                    navigateAdmin('occasions');
+                    navigateAdmin('overview');
                   }}
                   className="hover:text-stone-900 hover:underline"
                 >
-                  Admin Occasion &amp; Design Manager
+                  DesiDiya Admin Console
                 </a>
               </li>
             </ul>
@@ -1426,7 +1759,37 @@ export default function App() {
         decorationDesigns={decorationDesigns}
         activeCampaignSlug={bulkModalCampaignSlug}
         inquiryContext={inquiryContext}
+        customerProfile={customerProfile}
+        onRequireAuth={() => {
+          setBulkModalOpen(false);
+          setPendingBulkOrderAfterAuth(true);
+          setAuthModalOpen(true);
+        }}
         onSubmitOrder={handleSubmitBulkOrder}
+      />
+
+      <CustomerAuthModal
+        isOpen={authModalOpen}
+        onClose={() => {
+          setAuthModalOpen(false);
+          setPendingBulkOrderAfterAuth(false);
+        }}
+        pendingBulkOrderNotice={pendingBulkOrderAfterAuth}
+        onAuthenticated={async (profile) => {
+          setCustomerProfile(profile);
+          setAuthModalOpen(false);
+          await fetch('/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profile),
+          }).catch(() => {});
+          await refreshCustomerOrders(profile);
+          showToast(`Welcome to DesiDiya, ${profile.fullName}!`);
+          if (pendingBulkOrderAfterAuth) {
+            setPendingBulkOrderAfterAuth(false);
+            setBulkModalOpen(true);
+          }
+        }}
       />
 
       <ProductEditorModal

@@ -25,6 +25,7 @@ import type {
   BulkOrder,
   Campaign,
   CatalogTheme,
+  CustomerProfile,
   DecorationDesign,
   DecorationPackage,
   DecorationTheme,
@@ -45,6 +46,7 @@ interface PersistentStore {
   packages: DecorationPackage[];
   packageProducts: PackageProductMapping[];
   bulkOrders: BulkOrder[];
+  customers: CustomerProfile[];
   activeThemeId: string;
   previousThemeId: string;
   catalogViews: number;
@@ -113,6 +115,7 @@ function loadStore(): PersistentStore {
           Array.isArray(parsed.packageProducts) && parsed.packageProducts.length > 0
             ? parsed.packageProducts
             : [...INITIAL_PACKAGE_PRODUCTS];
+        parsed.customers = Array.isArray(parsed.customers) ? parsed.customers : [];
 
         return parsed;
       }
@@ -132,6 +135,7 @@ function loadStore(): PersistentStore {
     packages: [...INITIAL_PACKAGES],
     packageProducts: [...INITIAL_PACKAGE_PRODUCTS],
     bulkOrders: [...INITIAL_BULK_ORDERS],
+    customers: [],
     activeThemeId: 'theme-diwali-gold',
     previousThemeId: 'theme-minimal-white',
     catalogViews: 1420,
@@ -272,6 +276,7 @@ async function startServer() {
       previousThemeId: store.previousThemeId,
       catalogViews: store.catalogViews,
       bulkOrders: isAdminRequest ? store.bulkOrders : [],
+      customers: isAdminRequest ? store.customers : [],
     });
   });
 
@@ -330,8 +335,8 @@ async function startServer() {
     res.json({ product: productRecord });
   });
 
-  // 3. Batch Excel Import Endpoint (Processes in safe chunks <= 200 per batch)
-  app.post('/api/products/batch', (req, res) => {
+  // 3. Batch Excel Import Endpoint (Supports /api/products/batch and /api/products/import)
+  const handleBatchImport = (req: express.Request, res: express.Response) => {
     const { products: incomingProducts, duplicateMode = 'update' } = req.body as {
       products: Partial<Product>[];
       duplicateMode?: 'update' | 'skip';
@@ -348,7 +353,7 @@ async function startServer() {
     let skipped = 0;
     const savedProducts: Product[] = [];
 
-    for (const item of incomingProducts.slice(0, 500)) {
+    for (const item of incomingProducts.slice(0, 2000)) {
       if (!item.sku || !item.name) {
         skipped++;
         continue;
@@ -362,14 +367,14 @@ async function startServer() {
       }
 
       const record: Product = {
-        id: existingIdx >= 0 ? store.products[existingIdx].id : `prod-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: existingIdx >= 0 ? store.products[existingIdx].id : `prod-${cleanSku.toLowerCase()}`,
         sku: cleanSku,
         name: String(item.name).trim().slice(0, 200),
         heading: String(item.heading || item.name).trim().slice(0, 200),
-        subtitle: String(item.subtitle || `${item.brand || 'Artisan'} · ${item.category || 'Gifting'}`).trim().slice(0, 300),
+        subtitle: String(item.subtitle || `${item.brand || 'DesiDiya'} · ${item.category || 'Festive Decor'}`).trim().slice(0, 300),
         description: String(item.description || '').trim().slice(0, 2000),
         category: String(item.category || 'Festive Decor').trim().slice(0, 100),
-        brand: String(item.brand || 'Kansa Heritage').trim().slice(0, 100),
+        brand: String(item.brand || 'DesiDiya').trim().slice(0, 100),
         imageUrl: String(item.imageUrl || (existingIdx >= 0 ? store.products[existingIdx].imageUrl : '')),
         sellingPrice: Math.max(0, Number(item.sellingPrice) || 0),
         mrp: Math.max(Number(item.sellingPrice) || 0, Number(item.mrp) || 0),
@@ -411,7 +416,10 @@ async function startServer() {
       products: store.products,
       savedProducts,
     });
-  });
+  };
+
+  app.post('/api/products/batch', handleBatchImport);
+  app.post('/api/products/import', handleBatchImport);
 
   // 4. Product Delete
   app.delete('/api/products/:id', (req, res) => {
@@ -1273,6 +1281,109 @@ async function startServer() {
     res.json({ order: updatedOrder, bulkOrders: store.bulkOrders });
   });
 
+  // 10. Customer Account & Admin CRM Endpoints
+  app.get('/api/customers', (_req, res) => {
+    res.json({ customers: store.customers });
+  });
+
+  app.get('/api/customers/:uid', (req, res) => {
+    const { uid } = req.params;
+    const found = store.customers.find((c) => c.uid === uid);
+    if (!found) {
+      res.status(404).json({ error: 'Customer profile not found.' });
+      return;
+    }
+    const { internalNotes, ...customerView } = found;
+    res.json({ customer: customerView });
+  });
+
+  app.post('/api/customers', (req, res) => {
+    const body = req.body as Partial<CustomerProfile>;
+    if (!body.uid || !body.email) {
+      res.status(400).json({ error: 'Customer uid and email are required.' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const existingIdx = store.customers.findIndex((c) => c.uid === body.uid);
+    const existing = existingIdx >= 0 ? store.customers[existingIdx] : null;
+
+    const record: CustomerProfile = {
+      uid: String(body.uid),
+      fullName: String(body.fullName ?? existing?.fullName ?? 'Valued Customer').trim().slice(0, 150),
+      email: String(body.email ?? existing?.email ?? '').trim().slice(0, 254),
+      photoURL: String(body.photoURL ?? existing?.photoURL ?? '').trim().slice(0, 1000),
+      phoneNumber: String(body.phoneNumber ?? existing?.phoneNumber ?? '').trim().slice(0, 30),
+      whatsappNumber: String(body.whatsappNumber ?? body.phoneNumber ?? existing?.whatsappNumber ?? '').trim().slice(0, 30),
+      businessName: String(body.businessName ?? existing?.businessName ?? '').trim().slice(0, 200),
+      accountType: body.accountType || existing?.accountType || 'Individual Customer',
+      deliveryAddresses: Array.isArray(body.deliveryAddresses)
+        ? body.deliveryAddresses
+        : existing?.deliveryAddresses || [],
+      city: String(body.city ?? existing?.city ?? '').trim().slice(0, 100),
+      state: String(body.state ?? existing?.state ?? '').trim().slice(0, 100),
+      pincode: String(body.pincode ?? existing?.pincode ?? '').trim().slice(0, 20),
+      gstNumber: String(body.gstNumber ?? existing?.gstNumber ?? '').trim().slice(0, 30),
+      accountStatus: existing?.accountStatus || 'active',
+      internalNotes: existing?.internalNotes || '',
+      createdAt: existing?.createdAt || body.createdAt || now,
+      updatedAt: now,
+      lastLoginAt: body.lastLoginAt || now,
+    };
+
+    if (existingIdx >= 0) {
+      store.customers[existingIdx] = record;
+    } else {
+      store.customers.unshift(record);
+    }
+    saveStore(store);
+    const { internalNotes, ...customerView } = record;
+    res.json({ customer: customerView, customers: store.customers });
+  });
+
+  app.put('/api/customers/:uid/admin', (req, res) => {
+    const { uid } = req.params;
+    const { internalNotes, accountStatus } = req.body as {
+      internalNotes?: string;
+      accountStatus?: 'active' | 'suspended';
+    };
+    const idx = store.customers.findIndex((c) => c.uid === uid);
+    if (idx < 0) {
+      res.status(404).json({ error: 'Customer profile not found.' });
+      return;
+    }
+    store.customers[idx] = {
+      ...store.customers[idx],
+      internalNotes:
+        internalNotes !== undefined
+          ? String(internalNotes).slice(0, 2000)
+          : store.customers[idx].internalNotes,
+      accountStatus: accountStatus || store.customers[idx].accountStatus,
+      updatedAt: new Date().toISOString(),
+    };
+    saveStore(store);
+    res.json({ customer: store.customers[idx], customers: store.customers });
+  });
+
+  app.get('/api/orders/customer/:uid', (req, res) => {
+    const { uid } = req.params;
+    const email = String(req.query.email || '').toLowerCase().trim();
+    const phone = String(req.query.phone || '').replace(/[^0-9]/g, '');
+
+    const customerOrders = store.bulkOrders
+      .filter((o) => {
+        if (o.ownerId === uid) return true;
+        if (email && o.email && o.email.toLowerCase().trim() === email) return true;
+        if (phone && phone.length >= 10) {
+          const ordPhone = (o.whatsapp || o.mobile || '').replace(/[^0-9]/g, '');
+          if (ordPhone.endsWith(phone.slice(-10))) return true;
+        }
+        return false;
+      })
+      .map(({ internalNotes, ...safeOrder }) => safeOrder);
+
+    res.json({ orders: customerOrders });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -1289,7 +1400,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`DesiDiya — Catalog Maker Pro server running on http://localhost:${PORT}`);
+    console.log(`DesiDiya — Lighting Up Every Celebration server running on http://localhost:${PORT}`);
   });
 }
 

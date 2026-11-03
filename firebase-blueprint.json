@@ -1157,12 +1157,145 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated customer profile record keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Customer Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Customer full name",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Customer email address",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile avatar URL",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Mobile number",
+          "minLength": 0,
+          "maxLength": 25
+        },
+        "whatsappNumber": {
+          "type": "string",
+          "description": "WhatsApp number",
+          "minLength": 0,
+          "maxLength": 25
+        },
+        "businessName": {
+          "type": "string",
+          "description": "Company, event agency, or business name",
+          "minLength": 0,
+          "maxLength": 150
+        },
+        "accountType": {
+          "type": "string",
+          "description": "Customer buyer classification",
+          "enum": [
+            "Individual Customer",
+            "Business Buyer",
+            "Event Planner",
+            "Decorator",
+            "Wholesaler",
+            "Corporate Buyer"
+          ]
+        },
+        "deliveryAddressesJson": {
+          "type": "string",
+          "description": "Serialized JSON array of saved delivery addresses",
+          "minLength": 0,
+          "maxLength": 5000
+        },
+        "city": {
+          "type": "string",
+          "description": "Primary city",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "state": {
+          "type": "string",
+          "description": "Primary state",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "pincode": {
+          "type": "string",
+          "description": "Primary postal PIN code",
+          "minLength": 0,
+          "maxLength": 16
+        },
+        "gstNumber": {
+          "type": "string",
+          "description": "Optional GSTIN for B2B buyers",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "accountStatus": {
+          "type": "string",
+          "description": "Account status",
+          "enum": ["active", "suspended"]
+        },
+        "internalNotes": {
+          "type": "string",
+          "description": "Administrator internal notes on customer account",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Last sign-in ISO timestamp string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "email",
+        "accountType",
+        "accountStatus",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminRecord" },
       "description": "Trusted administrator lookup table."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Registered customer profiles with PII isolated to owner and admin."
     },
     "/products/{productId}": {
       "schema": { "$ref": "#/entities/Product" },

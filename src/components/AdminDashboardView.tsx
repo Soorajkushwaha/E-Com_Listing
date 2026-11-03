@@ -31,6 +31,7 @@ import type {
   BulkOrder,
   Campaign,
   CatalogTheme,
+  CustomerProfile,
   CustomerSummary,
   DecorationDesign,
   DecorationPackage,
@@ -54,9 +55,10 @@ import {
 } from '../utils/catalogLogic';
 import { exportQuotationToPdf } from '../utils/pdfExporter';
 import { uploadPersistentProductImage } from '../lib/firebase';
-import { ExcelImportPanel } from './ExcelImportPanel';
+import { ExcelImportPanel, type BatchImportResult } from './ExcelImportPanel';
 import { AiThemeDesignerPanel } from './AiThemeDesignerPanel';
 import { ProductVisual } from './ProductVisual';
+import { AdminCustomerManager } from './AdminCustomerManager';
 import {
   DecorationDesignManagerPanel,
   OccasionManagerPanel,
@@ -99,17 +101,23 @@ interface AdminDashboardViewProps {
   packages?: DecorationPackage[];
   packageProducts?: PackageProductMapping[];
   bulkOrders: BulkOrder[];
+  registeredCustomers?: CustomerProfile[];
   catalogViews: number;
   onOpenAddProduct: () => void;
   onOpenEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => Promise<void>;
   onBatchImportProducts: (
     products: Omit<Product, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'>[],
-    duplicateMode: 'update' | 'skip'
-  ) => Promise<{ added: number; updated: number; skipped: number }>;
+    duplicateMode: 'update' | 'skip',
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<BatchImportResult>;
   onSaveAndActivateTheme: (theme: Partial<CatalogTheme>, activate: boolean) => Promise<void>;
   onActivateExistingTheme: (themeId: string) => Promise<void>;
   onUpdateOrder: (orderId: string, updates: Partial<BulkOrder> & { timelineNote?: string }) => Promise<void>;
+  onUpdateCustomerAdminNotes?: (
+    uid: string,
+    updates: { internalNotes: string; accountStatus: 'active' | 'suspended' }
+  ) => Promise<void>;
   onSaveCampaign: (campaign: Partial<Campaign>) => Promise<void>;
   onDeleteCampaign: (campaignId: string) => Promise<void>;
   onSaveOccasion?: (occasion: Partial<Occasion>) => Promise<void>;
@@ -153,6 +161,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   packages = [],
   packageProducts = [],
   bulkOrders,
+  registeredCustomers = [],
   catalogViews,
   onOpenAddProduct,
   onOpenEditProduct,
@@ -161,6 +170,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onSaveAndActivateTheme,
   onActivateExistingTheme,
   onUpdateOrder,
+  onUpdateCustomerAdminNotes,
   onSaveCampaign,
   onDeleteCampaign,
   onSaveOccasion,
@@ -510,7 +520,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Bulk_Orders');
-    XLSX.writeFile(wb, 'Catalog_Maker_Pro_Bulk_Orders.xlsx');
+    XLSX.writeFile(wb, 'DesiDiya_Bulk_Orders.xlsx');
   };
 
   // Sign-In Screen when not authenticated
@@ -518,14 +528,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     return (
       <div className="mx-auto max-w-md px-4 py-16">
         <div className="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm space-y-6">
-          <div className="space-y-2 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-stone-900 text-amber-400">
-              <Lock className="h-6 w-6" />
+          <div className="space-y-3 text-center">
+            <img
+              src="/assets/aistudio/logo_3e12495b.png"
+              alt="DesiDiya — Lighting Up Every Celebration"
+              className="mx-auto h-14 w-auto object-contain"
+            />
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-[11px] font-bold text-amber-800">
+              <Lock className="h-3.5 w-3.5" />
+              DesiDiya Administrator Console
             </div>
             <h1 className="text-xl font-bold text-stone-900">Administrator Sign-In</h1>
             <p className="text-xs text-stone-500">
               Sign in with Firebase Google Authentication or enter your administrator workspace passcode to manage
-              products, Excel imports, AI themes, and B2B bulk quotations.
+              DesiDiya products, Excel imports, customer accounts, and B2B bulk quotations.
             </p>
           </div>
 
@@ -614,11 +630,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* Left Admin Sidebar (260px on desktop) */}
       <aside className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 lg:border-r border-stone-200 bg-white p-4 flex flex-col justify-between">
         <div className="space-y-4">
-          <div className="px-2 py-1">
-            <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
-              Admin Workspace
+          <div className="px-2 py-1 space-y-1.5">
+            <img
+              src="/assets/aistudio/logo_3e12495b.png"
+              alt="DesiDiya"
+              className="h-9 w-auto object-contain"
+            />
+            <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+              DesiDiya Admin Console
             </div>
-            <div className="text-xs font-medium text-stone-700 truncate mt-0.5">
+            <div className="text-xs font-medium text-stone-700 truncate">
               {adminEmail || 'simple.sooraj@gmail.com'}
             </div>
           </div>
@@ -1575,54 +1596,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
         {/* SECTION 7: CUSTOMERS CRM */}
         {activeSection === 'customers' && (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-stone-200 bg-white p-5">
-              <h1 className="text-lg font-bold text-stone-900">
-                B2B Customer Directory &amp; Order History ({customersList.length} Accounts)
-              </h1>
-              <p className="text-xs text-stone-500">
-                Customer contact records, GSTINs, order frequency, and confirmed B2B lifetime value
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-stone-200 text-stone-500">
-                      <th className="py-3 px-4 font-semibold">Customer &amp; Business</th>
-                      <th className="py-3 px-4 font-semibold">WhatsApp / Mobile</th>
-                      <th className="py-3 px-4 font-semibold">City &amp; GSTIN</th>
-                      <th className="py-3 px-4 font-semibold text-right">Orders</th>
-                      <th className="py-3 px-4 font-semibold text-right">Confirmed Value</th>
-                      <th className="py-3 px-4 font-semibold">Last Order</th>
-                      <th className="py-3 px-4 font-semibold">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {customersList.map((c) => (
-                      <tr key={c.id} className="hover:bg-stone-50">
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-stone-900">{c.customerName}</div>
-                          <div className="text-stone-500">{c.companyName || 'Direct B2B Buyer'}</div>
-                        </td>
-                        <td className="py-3 px-4 tabular-nums font-medium text-stone-800">{c.whatsapp}</td>
-                        <td className="py-3 px-4 text-stone-600">
-                          {c.city}, {c.state} · <span className="font-mono">{c.gstNumber || 'N/A'}</span>
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold tabular-nums">{c.orderCount}</td>
-                        <td className="py-3 px-4 text-right font-bold tabular-nums text-emerald-700">
-                          {formatINR(c.confirmedValue)}
-                        </td>
-                        <td className="py-3 px-4 tabular-nums text-stone-500">{c.lastOrderDate.slice(0, 10)}</td>
-                        <td className="py-3 px-4 text-stone-600 max-w-xs truncate">{c.notes || 'Active account'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <AdminCustomerManager
+            registeredCustomers={registeredCustomers}
+            bulkOrders={bulkOrders}
+            onUpdateCustomerAdminNotes={async (uid, updates) => {
+              await onUpdateCustomerAdminNotes?.(uid, updates);
+            }}
+            onSelectOrderInAdmin={(orderId) => {
+              setSelectedOrderId(orderId);
+              onSelectSection('orders');
+            }}
+          />
         )}
 
         {/* SECTION 8: CAMPAIGNS MANAGEMENT */}
@@ -2173,12 +2157,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div className="space-y-6">
             <div className="rounded-xl border border-stone-200 bg-white p-6 space-y-4">
               <h1 className="text-lg font-bold text-stone-900">
-                Platform Settings, Firebase Security &amp; Cloudflare Deployment
+                DesiDiya Platform Settings, Firebase Security &amp; Cloudflare Deployment
               </h1>
               <p className="text-xs text-stone-600 leading-relaxed">
-                Catalog Maker Pro is pre-configured with Cloud Firestore, Firebase Authentication, Firebase Storage
-                rules, and a Cloudflare Workers entry point (<code>worker.ts</code> + <code>wrangler.toml</code>) so your
-                public catalogs and bulk order portal stay online 24/7 without requiring your PC to remain running.
+                DesiDiya — Lighting Up Every Celebration is pre-configured with Cloud Firestore, Firebase Authentication
+                (Google &amp; Email/Password), Firebase Storage rules, and a Cloudflare Workers entry point
+                (<code>worker.ts</code> + <code>wrangler.toml</code>) so your public storefront and B2B bulk order portal
+                stay online 24/7 without requiring your PC to remain running.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">

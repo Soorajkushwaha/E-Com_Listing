@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import {
   AlertTriangle,
   CheckCircle2,
+  CloudUpload,
   Download,
   FileSpreadsheet,
   Sparkles,
@@ -17,13 +18,23 @@ import {
 import { SAMPLE_EXCEL_WORKBOOK_ROWS } from '../utils/seedData';
 import { uploadPersistentProductImage } from '../lib/firebase';
 
+export interface BatchImportResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  failed?: number;
+  firestoreSynced?: number;
+  firestoreError?: string | null;
+}
+
 interface ExcelImportPanelProps {
   existingProducts: Product[];
   campaigns?: Campaign[];
   onBatchImportProducts: (
     products: Omit<Product, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'>[],
-    duplicateMode: 'update' | 'skip'
-  ) => Promise<{ added: number; updated: number; skipped: number }>;
+    duplicateMode: 'update' | 'skip',
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<BatchImportResult>;
 }
 
 const MAPPING_FIELDS: { key: keyof ExcelColumnMapping; label: string; required?: boolean }[] = [
@@ -54,6 +65,7 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
   onBatchImportProducts,
 }) => {
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [selectedSheet, setSelectedSheet] = useState<string>('');
   const [rawRows, setRawRows] = useState<Record<string, any>[]>([]);
@@ -65,11 +77,11 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
   const [assignCampaignSlug, setAssignCampaignSlug] = useState<string>('');
   const [manualImageOverrides, setManualImageOverrides] = useState<Record<string, string>>({});
   const [importing, setImporting] = useState(false);
-  const [importResultBanner, setImportResultBanner] = useState<{
-    added: number;
-    updated: number;
-    skipped: number;
-  } | null>(null);
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(
+    null
+  );
+  const [fileReadError, setFileReadError] = useState<string>('');
+  const [importResultBanner, setImportResultBanner] = useState<BatchImportResult | null>(null);
 
   const loadSheetData = (wb: XLSX.WorkBook, sheetName: string) => {
     const sheet = wb.Sheets[sheetName];
@@ -80,35 +92,50 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
     setHeaders(detectedHeaders);
     setMapping(autoDetectExcelColumnMapping(detectedHeaders));
     setImportResultBanner(null);
+    setFileReadError('');
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: 'array' });
-    setWorkbook(wb);
-    setSheetNames(wb.SheetNames);
-    const first = wb.SheetNames[0] || '';
-    setSelectedSheet(first);
-    if (first) loadSheetData(wb, first);
+    setFileReadError('');
+    setImportResultBanner(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      if (!wb.SheetNames || wb.SheetNames.length === 0) {
+        setFileReadError('The uploaded Excel file does not contain any readable worksheets.');
+        return;
+      }
+      setUploadedFileName(file.name);
+      setWorkbook(wb);
+      setSheetNames(wb.SheetNames);
+      const first = wb.SheetNames[0] || '';
+      setSelectedSheet(first);
+      if (first) loadSheetData(wb, first);
+    } catch (err: any) {
+      setFileReadError(
+        err?.message || 'Unable to parse Excel file. Please ensure it is a valid .xlsx or .xls file.'
+      );
+    }
   };
 
   const handleLoadSampleWorkbook = () => {
     const ws = XLSX.utils.json_to_sheet(SAMPLE_EXCEL_WORKBOOK_ROWS);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Festive_Catalog_2026');
+    XLSX.utils.book_append_sheet(wb, ws, 'DesiDiya_Festive_2026');
+    setUploadedFileName('DesiDiya_Sample_Catalog.xlsx');
     setWorkbook(wb);
     setSheetNames(wb.SheetNames);
-    setSelectedSheet('Festive_Catalog_2026');
-    loadSheetData(wb, 'Festive_Catalog_2026');
+    setSelectedSheet('DesiDiya_Festive_2026');
+    loadSheetData(wb, 'DesiDiya_Festive_2026');
   };
 
   const handleDownloadTemplate = () => {
     const ws = XLSX.utils.json_to_sheet(SAMPLE_EXCEL_WORKBOOK_ROWS);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Catalog_Template');
-    XLSX.writeFile(wb, 'Catalog_Maker_Pro_Template.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, 'DesiDiya_Template');
+    XLSX.writeFile(wb, 'DesiDiya_Product_Catalog_Template.xlsx');
   };
 
   const existingSkuSet = useMemo(
@@ -131,13 +158,14 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
       knownCampaignSlugs.size > 0 ? knownCampaignSlugs : undefined,
       assignCampaignSlug || undefined
     );
-    // Apply any manual image uploads or explicit campaign assignment for rows
     const enrichedProducts = base.validProducts.map((p) => {
       const mergedCampaigns = assignCampaignSlug
         ? Array.from(new Set([assignCampaignSlug, ...(p.campaigns || [p.campaign])]))
         : p.campaigns || [p.campaign];
       return {
         ...p,
+        brand: p.brand === 'House of Artisan' ? 'DesiDiya' : p.brand || 'DesiDiya',
+        category: p.category === 'General Gifting' ? 'Decorative Lighting' : p.category || 'Decorative Lighting',
         campaign: assignCampaignSlug || p.campaign,
         campaigns: mergedCampaigns,
         imageUrl: manualImageOverrides[p.sku] || p.imageUrl,
@@ -147,7 +175,15 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
       ...base,
       validProducts: enrichedProducts,
     };
-  }, [rawRows, mapping, existingSkuSet, duplicateMode, knownCampaignSlugs, assignCampaignSlug, manualImageOverrides]);
+  }, [
+    rawRows,
+    mapping,
+    existingSkuSet,
+    duplicateMode,
+    knownCampaignSlugs,
+    assignCampaignSlug,
+    manualImageOverrides,
+  ]);
 
   const handleManualRowImageUpload = async (sku: string, file: File) => {
     const dataUrl = await uploadPersistentProductImage(file);
@@ -157,14 +193,29 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
   const handleExecuteImport = async () => {
     if (!validation || validation.validProducts.length === 0) return;
     setImporting(true);
+    setFileReadError('');
+    setImportResultBanner(null);
+    setImportProgress({ completed: 0, total: validation.validProducts.length });
+
     try {
       const res = await onBatchImportProducts(
         validation.validProducts,
-        duplicateMode === 'skip' ? 'skip' : 'update'
+        duplicateMode === 'skip' ? 'skip' : 'update',
+        (completed, total) => {
+          setImportProgress({ completed, total });
+        }
       );
-      setImportResultBanner(res);
+      setImportResultBanner({
+        ...res,
+        failed: validation.summary.errorRows,
+      });
+    } catch (err: any) {
+      setFileReadError(
+        err?.message || 'Batch product import failed. Please check your connection and permissions.'
+      );
     } finally {
       setImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -174,11 +225,11 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-stone-200 bg-white p-6">
         <div className="space-y-1">
           <h2 className="text-lg font-bold text-stone-900">
-            Excel Catalog Import &amp; Validation Engine (.xlsx / .xls)
+            DesiDiya Excel Product Import &amp; Cloud Firestore Sync (.xlsx / .xls)
           </h2>
           <p className="text-xs text-stone-500 max-w-2xl">
-            Upload your multi-sheet Excel product catalog, map columns to Catalog Maker Pro fields, validate SKUs and
-            marketplace links, and batch-sync records to Firestore and the live storefront.
+            Upload your multi-sheet Excel workbook, map columns to DesiDiya catalog fields, preview and validate SKUs,
+            prices, and marketplace links, and batch-save records to Cloud Firestore and the live storefront.
           </p>
         </div>
 
@@ -198,10 +249,10 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
             className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition-colors whitespace-nowrap"
           >
             <Sparkles className="h-4 w-4 text-amber-700" />
-            Load Sample Catalog Workbook
+            Load Sample DesiDiya Workbook
           </button>
 
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-stone-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-stone-800 transition-colors whitespace-nowrap">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-stone-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors whitespace-nowrap">
             <Upload className="h-4 w-4" />
             <span>Upload Excel (.xlsx / .xls)</span>
             <input
@@ -214,19 +265,86 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
         </div>
       </div>
 
+      {/* File / Import Error Alert */}
+      {fileReadError && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-900"
+        >
+          <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <strong>Excel Import Error:</strong> {fileReadError}
+          </div>
+        </div>
+      )}
+
+      {/* Progress Bar during Import */}
+      {importing && importProgress && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-amber-950 tabular-nums">
+            <span className="inline-flex items-center gap-2">
+              <CloudUpload className="h-4 w-4 text-amber-700 animate-pulse" />
+              Saving validated products to DesiDiya Storefront &amp; Cloud Firestore...
+            </span>
+            <span>
+              {importProgress.completed} / {importProgress.total} rows processed
+            </span>
+          </div>
+          <div className="h-2.5 w-full rounded-full bg-amber-200/70 overflow-hidden">
+            <div
+              className="h-full bg-amber-600 transition-all duration-200"
+              style={{
+                width: `${Math.max(
+                  5,
+                  Math.round((importProgress.completed / Math.max(1, importProgress.total)) * 100)
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Result Banner */}
       {importResultBanner && (
         <div
           role="status"
-          className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-950 space-y-2"
         >
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-emerald-700 shrink-0" />
-            <div>
-              <strong>Excel Catalog Import Complete:</strong> Added{' '}
-              <strong className="tabular-nums">{importResultBanner.added}</strong> new products, updated{' '}
-              <strong className="tabular-nums">{importResultBanner.updated}</strong> existing SKUs, skipped{' '}
-              <strong className="tabular-nums">{importResultBanner.skipped}</strong> rows. All products are now live in
-              Catalog Builder and Shop Listing.
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-700 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="font-bold text-sm">
+                DesiDiya Product Import Complete ({uploadedFileName || 'Workbook'})
+              </div>
+              <div className="flex flex-wrap items-center gap-4 tabular-nums">
+                <span>
+                  Added New: <strong className="text-emerald-800">{importResultBanner.added}</strong>
+                </span>
+                <span>
+                  Updated by SKU: <strong className="text-amber-800">{importResultBanner.updated}</strong>
+                </span>
+                <span>
+                  Skipped Rows: <strong>{importResultBanner.skipped}</strong>
+                </span>
+                <span>
+                  Validation Errors: <strong className="text-red-700">{importResultBanner.failed ?? 0}</strong>
+                </span>
+                {typeof importResultBanner.firestoreSynced === 'number' && (
+                  <span>
+                    Firestore Confirmed Writes:{' '}
+                    <strong className="text-emerald-800">{importResultBanner.firestoreSynced}</strong>
+                  </span>
+                )}
+              </div>
+              <p className="text-emerald-800">
+                All imported products are immediately visible in the DesiDiya public storefront, category filters, and
+                admin product table, and persist across page refreshes.
+              </p>
+              {importResultBanner.firestoreError && (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-100/80 p-2.5 text-amber-950">
+                  <strong>Cloud Firestore Diagnostic Notice:</strong> {importResultBanner.firestoreError}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -239,8 +357,8 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
             No Excel workbook loaded yet
           </div>
           <p className="text-xs text-stone-500 max-w-md mx-auto">
-            Click <strong>Upload Excel (.xlsx / .xls)</strong> to select a file from your computer, or click{' '}
-            <strong>Load Sample Catalog Workbook</strong> to inspect column mapping and batch import immediately.
+            Click <strong>Upload Excel (.xlsx / .xls)</strong> to select a spreadsheet from your computer, or click{' '}
+            <strong>Load Sample DesiDiya Workbook</strong> to test multi-column mapping and batch import immediately.
           </p>
         </div>
       ) : (
@@ -249,7 +367,7 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 rounded-xl border border-stone-200 bg-white p-5">
             <div>
               <label htmlFor="excel-sheet-select" className="block text-xs font-semibold text-stone-700 mb-1">
-                1. Select Worksheet
+                1. Select Worksheet ({sheetNames.length} found)
               </label>
               <select
                 id="excel-sheet-select"
@@ -280,7 +398,7 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
               >
                 <option value="update">Update existing products by SKU (Recommended)</option>
                 <option value="skip">Skip existing SKUs (Keep current data)</option>
-                <option value="error">Block import if duplicate SKU exists</option>
+                <option value="error">Flag error if duplicate SKU exists</option>
               </select>
             </div>
 
@@ -313,8 +431,8 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   {importing
-                    ? 'Importing Batch...'
-                    : `Import Validated Products (${validation.validProducts.length} Rows)`}
+                    ? 'Saving to Firestore...'
+                    : `Import & Save (${validation.validProducts.length} Valid Rows)`}
                 </button>
               </div>
             )}
@@ -322,12 +440,12 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
 
           {/* Column Mapping Grid */}
           <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-bold text-stone-900">
                 Column Mapping ({headers.length} columns detected in sheet "{selectedSheet}")
               </h3>
               <span className="text-xs text-stone-500">
-                Auto-mapped by header name · Adjust any dropdown if your spreadsheet uses custom headers
+                Auto-detected from header row · Adjust any dropdown if your Excel file uses custom column names
               </span>
             </div>
 
@@ -381,7 +499,7 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
                   <div className="text-lg font-bold text-amber-600">{validation.summary.warningCount}</div>
                 </div>
                 <div className="rounded-lg border border-stone-200 p-3">
-                  <div className="text-stone-500">Errors</div>
+                  <div className="text-stone-500">Failed / Invalid</div>
                   <div className="text-lg font-bold text-red-600">{validation.summary.errorRows}</div>
                 </div>
               </div>
@@ -390,7 +508,8 @@ export const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({
                 <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
                     <AlertTriangle className="h-4 w-4 text-amber-700" />
-                    Pre-Import Validation Diagnostics
+                    Pre-Import Validation Diagnostics ({validation.issues.length} issue
+                    {validation.issues.length === 1 ? '' : 's'})
                   </div>
                   <ul className="space-y-1 text-xs text-stone-700 max-h-36 overflow-y-auto">
                     {validation.issues.map((iss, idx) => (

@@ -1,19 +1,47 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    function isVerifiedAdmin() {
-      return request.auth != null &&
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
         request.auth.token.email_verified == true &&
         request.auth.token.email == 'simple.sooraj@gmail.com';
     }
 
-    match /products/{fileName} {
-      allow read: if true;
-      allow write: if isVerifiedAdmin() &&
-        request.resource.size < 5 * 1024 * 1024 &&
+    function isValidImageUpload() {
+      return request.resource != null &&
+        request.resource.size <= 10 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
     }
 
+    // Product Catalog Images (Public Read, Admin Write)
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImageUpload();
+    }
+
+    // Campaign Hero Banners (Public Read, Admin Write)
+    match /campaigns/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImageUpload();
+    }
+
+    // Occasion & Decoration Design Inspiration Gallery Images (Public Read, Admin Write)
+    match /designs/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImageUpload();
+    }
+
+    // Official DesiDiya Brand Assets (Public Read, Admin Write)
+    match /brand/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImageUpload();
+    }
+
+    // Default deny for all other paths
     match /{allPaths=**} {
       allow read, write: if false;
     }

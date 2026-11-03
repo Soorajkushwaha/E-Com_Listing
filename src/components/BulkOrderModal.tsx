@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Plus, Trash2, X, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
+import { CheckCircle2, Plus, Trash2, X, MessageSquare, ShieldCheck, UserCheck, LogIn } from 'lucide-react';
 import type {
   BulkOrder,
   BulkOrderItem,
   Campaign,
+  CustomerProfile,
   DecorationDesign,
   DecorationTheme,
   Occasion,
@@ -39,6 +40,9 @@ interface BulkOrderModalProps {
   decorationDesigns?: DecorationDesign[];
   activeCampaignSlug?: string;
   inquiryContext?: BulkInquiryContext;
+  customerProfile?: CustomerProfile | null;
+  onRequireAuth?: () => void;
+  onNavigateAccountOrders?: () => void;
   onSubmitOrder: (payload: Partial<BulkOrder>) => Promise<BulkOrder>;
 }
 
@@ -53,6 +57,9 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
   decorationThemes = [],
   activeCampaignSlug = 'diwali-2026',
   inquiryContext,
+  customerProfile,
+  onRequireAuth,
+  onNavigateAccountOrders,
   onSubmitOrder,
 }) => {
   const [items, setItems] = useState<BulkOrderItem[]>(
@@ -95,6 +102,34 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
   const [pinCode, setPinCode] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [campaignSlug, setCampaignSlug] = useState(activeCampaignSlug || 'diwali-2026');
+
+  // Pre-fill customer profile details when signed in
+  React.useEffect(() => {
+    if (customerProfile) {
+      setCustomerName((prev) => prev || customerProfile.fullName || '');
+      setCompanyName((prev) => prev || customerProfile.businessName || '');
+      setMobile((prev) => prev || customerProfile.phoneNumber || '');
+      setWhatsapp(
+        (prev) => prev || customerProfile.whatsappNumber || customerProfile.phoneNumber || ''
+      );
+      setEmail((prev) => prev || customerProfile.email || '');
+      setGstNumber((prev) => prev || customerProfile.gstNumber || '');
+
+      const defaultAddr =
+        (customerProfile.deliveryAddresses || []).find((a) => a.isDefault) ||
+        (customerProfile.deliveryAddresses || [])[0];
+      if (defaultAddr) {
+        setAddress((prev) => prev || defaultAddr.streetAddress || '');
+        setCity((prev) => prev || defaultAddr.city || customerProfile.city || '');
+        setStateName((prev) => prev || defaultAddr.state || customerProfile.state || '');
+        setPinCode((prev) => prev || defaultAddr.pincode || customerProfile.pincode || '');
+      } else {
+        setCity((prev) => prev || customerProfile.city || '');
+        setStateName((prev) => prev || customerProfile.state || '');
+        setPinCode((prev) => prev || customerProfile.pincode || '');
+      }
+    }
+  }, [customerProfile]);
 
   // DesiDiya Occasion, Theme, Event Date, Venue & Guest Count State
   const [occasionSlug, setOccasionSlug] = useState<string>(
@@ -179,6 +214,12 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
+    // Phase 4: Mandatory Customer Authentication before Order Submission
+    if (!customerProfile && onRequireAuth) {
+      onRequireAuth();
+      return;
+    }
+
     if (items.length === 0) {
       setErrorMsg('Please include at least one product in your bulk inquiry.');
       return;
@@ -211,11 +252,12 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
       const thmObj = decorationThemes.find((t) => t.slug === decorationThemeSlug);
 
       const created = await onSubmitOrder({
+        ownerId: customerProfile?.uid || 'customer-portal',
         customerName: customerName.trim(),
         companyName: companyName.trim(),
         mobile: cleanMobile,
         whatsapp: (whatsapp.trim() || cleanMobile).replace(/[^0-9+]/g, ''),
-        email: email.trim(),
+        email: (email.trim() || customerProfile?.email || '').trim(),
         address: address.trim(),
         city: city.trim(),
         state: stateName.trim(),
@@ -266,15 +308,22 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
       <div className="relative my-8 w-full max-w-3xl rounded-xl border border-stone-200 bg-white text-stone-900 shadow-2xl overflow-hidden">
         {/* Top bar */}
         <div className="flex items-center justify-between border-b border-stone-200 bg-stone-900 px-6 py-4 text-stone-50">
-          <div>
-            <h2 id="bulk-order-modal-title" className="text-lg font-semibold tracking-tight">
-              {confirmedOrder
-                ? 'Bulk Order Inquiry Confirmed'
-                : 'DesiDiya Unified Bulk Shopping & Event Quotation Basket'}
-            </h2>
-            <p className="text-xs text-stone-300">
-              Combine products from shop, occasion themes, decoration designs &amp; packages · No upfront payment
-            </p>
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/aistudio/logo_3e12495b.png"
+              alt="DesiDiya"
+              className="h-9 w-auto object-contain rounded bg-white/95 px-2 py-1"
+            />
+            <div>
+              <h2 id="bulk-order-modal-title" className="text-lg font-semibold tracking-tight">
+                {confirmedOrder
+                  ? 'Bulk Order Inquiry Confirmed'
+                  : 'DesiDiya Unified Bulk Shopping & Event Quotation Basket'}
+              </h2>
+              <p className="text-xs text-stone-300">
+                Lighting Up Every Celebration · Combine products, occasion themes &amp; packages
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -301,7 +350,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                   Thank you, <strong>{confirmedOrder.customerName}</strong>. Your inquiry for{' '}
                   <strong className="tabular-nums">{confirmedOrder.totalQuantity} units</strong> (Estimated Catalog
                   Value: <strong className="tabular-nums">{formatINR(confirmedOrder.estimatedAmount)}</strong>) has
-                  been logged. Our DesiDiya B2B desk will contact you on WhatsApp (
+                  been logged under your DesiDiya customer account. Our B2B desk will contact you on WhatsApp (
                   <span className="tabular-nums">{confirmedOrder.whatsapp}</span>) with your formal quotation.
                 </p>
                 {confirmedOrder.occasionName && (
@@ -343,13 +392,27 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 <MessageSquare className="h-4 w-4" />
                 Open WhatsApp Inquiry Thread
               </a>
-              <button
-                type="button"
-                onClick={resetAndClose}
-                className="rounded-lg bg-stone-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-stone-800 transition-colors"
-              >
-                Done &amp; Return to Storefront
-              </button>
+              <div className="flex items-center gap-2.5">
+                {onNavigateAccountOrders && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAndClose();
+                      onNavigateAccountOrders();
+                    }}
+                    className="rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-xs font-semibold text-stone-800 hover:bg-stone-50 transition-colors"
+                  >
+                    View in My Account Orders
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={resetAndClose}
+                  className="rounded-lg bg-stone-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-stone-800 transition-colors"
+                >
+                  Done &amp; Return to Storefront
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -360,6 +423,42 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-800"
               >
                 {errorMsg}
+              </div>
+            )}
+
+            {/* Customer Authentication Status Banner */}
+            {customerProfile ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-2.5 text-xs text-emerald-950">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                  <span>
+                    Signed in as <strong>{customerProfile.fullName}</strong> ({customerProfile.email}) ·{' '}
+                    <span className="font-semibold text-emerald-800">{customerProfile.accountType}</span>
+                  </span>
+                </div>
+                <span className="text-[11px] text-emerald-800">
+                  Inquiry will be saved to your DesiDiya account dashboard
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+                <div className="space-y-0.5">
+                  <div className="font-bold">Sign In Required Before Submitting Bulk Order</div>
+                  <div className="text-amber-900">
+                    You can customize products and quantities below. Please sign in or create an account to submit your
+                    inquiry.
+                  </div>
+                </div>
+                {onRequireAuth && (
+                  <button
+                    type="button"
+                    onClick={onRequireAuth}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3.5 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors shrink-0"
+                  >
+                    <LogIn className="h-3.5 w-3.5 text-amber-400" />
+                    Sign In / Create Account
+                  </button>
+                )}
               </div>
             )}
 
