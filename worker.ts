@@ -526,6 +526,268 @@ export default {
       return jsonResponse({ ok: true, campaigns: memoryStore.campaigns });
     }
 
+    if (url.pathname === '/api/occasions' && request.method === 'POST') {
+      const reqBody = ((await request.json().catch(() => null)) ?? {}) as any;
+      const body = reqBody as Partial<Occasion>;
+      if (!body.name || !body.slug) {
+        return jsonResponse({ error: 'Occasion Name and Slug are required.' }, 400);
+      }
+      const now = new Date().toISOString();
+      const cleanSlug = body.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      const existingIdx = memoryStore.occasions.findIndex(
+        (o) => o.id === body.id || o.slug === cleanSlug
+      );
+      const record: Occasion = {
+        id: existingIdx >= 0 ? memoryStore.occasions[existingIdx].id : body.id || `occ-${Date.now()}`,
+        name: body.name.trim().slice(0, 150),
+        slug: cleanSlug,
+        description: String(body.description || '').trim().slice(0, 2000),
+        coverImage: String(body.coverImage ?? (existingIdx >= 0 ? memoryStore.occasions[existingIdx].coverImage : '')).trim(),
+        bannerImage: String(body.bannerImage ?? (existingIdx >= 0 ? memoryStore.occasions[existingIdx].bannerImage : '')).trim(),
+        icon: String(body.icon || 'Sparkles').trim().slice(0, 60),
+        featured: Boolean(body.featured),
+        displayOrder: Number(body.displayOrder) || memoryStore.occasions.length + 1,
+        status: body.status === 'inactive' ? 'inactive' : 'active',
+        ownerId: 'system-admin',
+        createdAt: existingIdx >= 0 ? memoryStore.occasions[existingIdx].createdAt : now,
+        updatedAt: now,
+      };
+
+      if (existingIdx >= 0) {
+        memoryStore.occasions[existingIdx] = record;
+      } else {
+        memoryStore.occasions.push(record);
+      }
+      memoryStore.occasions.sort((a, b) => a.displayOrder - b.displayOrder);
+      return jsonResponse({ occasion: record, occasions: memoryStore.occasions });
+    }
+
+    if (url.pathname === '/api/decoration-themes' && request.method === 'POST') {
+      const reqBody = ((await request.json().catch(() => null)) ?? {}) as any;
+      const body = reqBody as Partial<DecorationTheme>;
+      if (!body.title || !body.slug || !body.occasionId) {
+        return jsonResponse({ error: 'Theme Title, Slug, and Occasion are required.' }, 400);
+      }
+      const now = new Date().toISOString();
+      const cleanSlug = body.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      const occ = memoryStore.occasions.find((o) => o.id === body.occasionId || o.slug === body.occasionSlug);
+      const existingIdx = memoryStore.decorationThemes.findIndex(
+        (t) => t.id === body.id || t.slug === cleanSlug
+      );
+      const record: DecorationTheme = {
+        id: existingIdx >= 0 ? memoryStore.decorationThemes[existingIdx].id : body.id || `dtheme-${Date.now()}`,
+        occasionId: occ ? occ.id : String(body.occasionId),
+        occasionSlug: occ ? occ.slug : String(body.occasionSlug || 'wedding'),
+        title: body.title.trim().slice(0, 200),
+        slug: cleanSlug,
+        description: String(body.description || '').trim().slice(0, 2000),
+        coverImage: String(body.coverImage ?? (existingIdx >= 0 ? memoryStore.decorationThemes[existingIdx].coverImage : '')).trim(),
+        galleryImages: Array.isArray(body.galleryImages)
+          ? body.galleryImages.map((img) => String(img).trim()).filter(Boolean)
+          : existingIdx >= 0
+            ? memoryStore.decorationThemes[existingIdx].galleryImages
+            : [],
+        colorPalette: Array.isArray(body.colorPalette)
+          ? body.colorPalette.map((c) => String(c).trim()).filter(Boolean)
+          : existingIdx >= 0
+            ? memoryStore.decorationThemes[existingIdx].colorPalette
+            : ['Warm Gold', 'Ivory'],
+        style: (body.style as any) || 'Royal',
+        featured: Boolean(body.featured),
+        displayOrder: Number(body.displayOrder) || memoryStore.decorationThemes.length + 1,
+        status: body.status === 'draft' ? 'draft' : 'published',
+        ownerId: 'system-admin',
+        createdAt: existingIdx >= 0 ? memoryStore.decorationThemes[existingIdx].createdAt : now,
+        updatedAt: now,
+      };
+
+      if (existingIdx >= 0) {
+        memoryStore.decorationThemes[existingIdx] = record;
+      } else {
+        memoryStore.decorationThemes.push(record);
+      }
+      memoryStore.decorationThemes.sort((a, b) => a.displayOrder - b.displayOrder);
+      return jsonResponse({ decorationTheme: record, decorationThemes: memoryStore.decorationThemes });
+    }
+
+    if (url.pathname === '/api/decoration-designs' && request.method === 'POST') {
+      const reqBody = ((await request.json().catch(() => null)) ?? {}) as any;
+      const { design } = reqBody as {
+        design: Partial<DecorationDesign>;
+        productMappings?: Partial<DesignProductMapping>[];
+        mappings?: Partial<DesignProductMapping>[];
+      };
+      const productMappings: Partial<DesignProductMapping>[] | undefined =
+        reqBody.productMappings || reqBody.mappings;
+      if (!design || !design.title || !design.slug || !design.occasionId || !design.themeId) {
+        return jsonResponse({ error: 'Design Title, Slug, Occasion, and Theme are required.' }, 400);
+      }
+
+      const now = new Date().toISOString();
+      const cleanSlug = design.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      const occ = memoryStore.occasions.find((o) => o.id === design.occasionId || o.slug === design.occasionSlug);
+      const thm = memoryStore.decorationThemes.find((t) => t.id === design.themeId || t.slug === design.themeSlug);
+      const existingIdx = memoryStore.decorationDesigns.findIndex(
+        (d) => d.id === design.id || d.slug === cleanSlug
+      );
+      const designId = existingIdx >= 0 ? memoryStore.decorationDesigns[existingIdx].id : design.id || `design-${Date.now()}`;
+
+      const record: DecorationDesign = {
+        id: designId,
+        title: design.title.trim().slice(0, 200),
+        slug: cleanSlug,
+        occasionId: occ ? occ.id : String(design.occasionId),
+        occasionSlug: occ ? occ.slug : String(design.occasionSlug || 'wedding'),
+        themeId: thm ? thm.id : String(design.themeId),
+        themeSlug: thm ? thm.slug : String(design.themeSlug || 'royal-gold-wedding'),
+        mainImage: String(design.mainImage ?? (existingIdx >= 0 ? memoryStore.decorationDesigns[existingIdx].mainImage : '')).trim(),
+        galleryImages: Array.isArray(design.galleryImages)
+          ? design.galleryImages.map((g) => String(g).trim()).filter(Boolean)
+          : existingIdx >= 0
+            ? memoryStore.decorationDesigns[existingIdx].galleryImages
+            : [],
+        shortDescription: String(design.shortDescription || '').trim().slice(0, 500),
+        fullDescription: String(design.fullDescription || design.shortDescription || '').trim().slice(0, 3000),
+        decorationArea: (design.decorationArea as any) || 'Stage / Mandap',
+        recommendedGuestCount: String(design.recommendedGuestCount || '100 - 300 Guests').trim().slice(0, 100),
+        indoorOutdoor: design.indoorOutdoor || 'both',
+        estimatedBudgetRange: String(design.estimatedBudgetRange || '₹25,000 – ₹75,000').trim().slice(0, 120),
+        tags: Array.isArray(design.tags)
+          ? design.tags.map((t: string) => String(t).trim()).filter(Boolean)
+          : existingIdx >= 0
+            ? memoryStore.decorationDesigns[existingIdx].tags
+            : [],
+        featured: Boolean(design.featured),
+        status: design.status === 'draft' ? 'draft' : 'published',
+        ownerId: 'system-admin',
+        createdAt: existingIdx >= 0 ? memoryStore.decorationDesigns[existingIdx].createdAt : now,
+        updatedAt: now,
+      };
+
+      if (existingIdx >= 0) {
+        memoryStore.decorationDesigns[existingIdx] = record;
+      } else {
+        memoryStore.decorationDesigns.unshift(record);
+      }
+
+      if (Array.isArray(productMappings)) {
+        memoryStore.designProducts = memoryStore.designProducts.filter((m) => m.designId !== designId);
+        const savedMappings: DesignProductMapping[] = [];
+        productMappings.forEach((m, index) => {
+          if (!m.productId && !m.sku) return;
+          const prod = memoryStore.products.find((p) => p.id === m.productId || p.sku === m.sku);
+          if (!prod) return;
+          savedMappings.push({
+            id: m.id || `dp-${designId}-${prod.id}-${index}`,
+            designId,
+            productId: prod.id,
+            sku: prod.sku,
+            recommendedQuantity: Math.max(1, Number(m.recommendedQuantity) || 1),
+            quantityUnit: (m.quantityUnit as any) || 'pcs',
+            isRequired: m.isRequired !== undefined ? Boolean(m.isRequired) : true,
+            displayOrder: Number(m.displayOrder) || index + 1,
+            notes: String(m.notes || '').trim().slice(0, 500),
+            ownerId: 'system-admin',
+            createdAt: now,
+            updatedAt: now,
+          });
+        });
+        memoryStore.designProducts.push(...savedMappings);
+      }
+
+      return jsonResponse({
+        decorationDesign: record,
+        decorationDesigns: memoryStore.decorationDesigns,
+        designProducts: memoryStore.designProducts,
+      });
+    }
+
+    if (url.pathname === '/api/packages' && request.method === 'POST') {
+      const reqBody = ((await request.json().catch(() => null)) ?? {}) as any;
+      const { pkg } = reqBody as {
+        pkg: Partial<DecorationPackage>;
+        productMappings?: Partial<PackageProductMapping>[];
+        mappings?: Partial<PackageProductMapping>[];
+      };
+      const productMappings: Partial<PackageProductMapping>[] | undefined =
+        reqBody.productMappings || reqBody.mappings;
+      if (!pkg || !pkg.name || !pkg.slug || !pkg.occasionId) {
+        return jsonResponse({ error: 'Package Name, Slug, and Occasion are required.' }, 400);
+      }
+
+      const now = new Date().toISOString();
+      const cleanSlug = pkg.slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      const occ = memoryStore.occasions.find((o) => o.id === pkg.occasionId || o.slug === pkg.occasionSlug);
+      const thm = memoryStore.decorationThemes.find((t) => t.id === pkg.themeId || t.slug === pkg.themeSlug);
+      const existingIdx = memoryStore.packages.findIndex(
+        (p) => p.id === pkg.id || p.slug === cleanSlug
+      );
+      const packageId = existingIdx >= 0 ? memoryStore.packages[existingIdx].id : pkg.id || `pkg-${Date.now()}`;
+
+      const record: DecorationPackage = {
+        id: packageId,
+        name: pkg.name.trim().slice(0, 200),
+        slug: cleanSlug,
+        occasionId: occ ? occ.id : String(pkg.occasionId),
+        occasionSlug: occ ? occ.slug : String(pkg.occasionSlug || 'wedding'),
+        themeId: thm ? thm.id : String(pkg.themeId || ''),
+        themeSlug: thm ? thm.slug : String(pkg.themeSlug || ''),
+        coverImage: String(pkg.coverImage ?? (existingIdx >= 0 ? memoryStore.packages[existingIdx].coverImage : '')).trim(),
+        galleryImages: [],
+        description: String(pkg.description || '').trim().slice(0, 2000),
+        startingPrice: Math.max(0, Number(pkg.startingPrice) || 0),
+        guestCapacity: String(pkg.guestCapacity || '100 - 300 Guests').trim().slice(0, 100),
+        featured: Boolean(pkg.featured),
+        status: pkg.status === 'draft' ? 'draft' : 'published',
+        ownerId: 'system-admin',
+        createdAt: existingIdx >= 0 ? memoryStore.packages[existingIdx].createdAt : now,
+        updatedAt: now,
+      };
+
+      if (existingIdx >= 0) {
+        memoryStore.packages[existingIdx] = record;
+      } else {
+        memoryStore.packages.unshift(record);
+      }
+
+      if (Array.isArray(productMappings)) {
+        memoryStore.packageProducts = memoryStore.packageProducts.filter((m) => m.packageId !== packageId);
+        const savedMappings: PackageProductMapping[] = [];
+        productMappings.forEach((m, index) => {
+          if (!m.productId && !m.sku) return;
+          const prod = memoryStore.products.find((p) => p.id === m.productId || p.sku === m.sku);
+          if (!prod) return;
+          savedMappings.push({
+            id: m.id || `pp-${packageId}-${prod.id}-${index}`,
+            packageId,
+            productId: prod.id,
+            sku: prod.sku,
+            recommendedQuantity: Math.max(1, Number(m.recommendedQuantity) || 1),
+            quantityUnit: (m.quantityUnit as any) || 'pcs',
+            isRequired: m.isRequired !== undefined ? Boolean(m.isRequired) : true,
+            displayOrder: Number(m.displayOrder) || index + 1,
+            notes: String(m.notes || '').trim().slice(0, 500),
+            ownerId: 'system-admin',
+            createdAt: now,
+            updatedAt: now,
+          });
+        });
+        memoryStore.packageProducts.push(...savedMappings);
+      }
+
+      return jsonResponse({
+        pkg: record,
+        package: record,
+        packages: memoryStore.packages,
+        packageProducts: memoryStore.packageProducts,
+      });
+    }
+
+    // Unmatched API routes return JSON 404 instead of falling through to the SPA/text fallback
+    if (url.pathname.startsWith('/api/')) {
+      return jsonResponse({ error: `No API route for ${request.method} ${url.pathname}` }, 404);
+    }
+
     // Serve static SPA assets for all non-API routes
     if (env.ASSETS) {
       const assetResp = await env.ASSETS.fetch(request);

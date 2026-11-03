@@ -898,7 +898,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(occInput),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !(Array.isArray(data.occasions))) {
+      showToast(`Failed to save occasion: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok && Array.isArray(data.occasions)) {
       setOccasions(data.occasions);
       if (data.occasion) {
@@ -924,7 +928,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(themeInput),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !(Array.isArray(data.decorationThemes))) {
+      showToast(`Failed to save decoration theme: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok && Array.isArray(data.decorationThemes)) {
       setDecorationThemes(data.decorationThemes);
       if (data.decorationTheme) {
@@ -953,7 +961,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ design: designInput, mappings }),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !(data.decorationDesign)) {
+      showToast(`Failed to save design: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok) {
       if (Array.isArray(data.decorationDesigns)) setDecorationDesigns(data.decorationDesigns);
       if (Array.isArray(data.designProducts)) setDesignProducts(data.designProducts);
@@ -987,7 +999,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pkg: pkgInput, mappings }),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !(data.package)) {
+      showToast(`Failed to save package: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok) {
       if (Array.isArray(data.packages)) setPackages(data.packages);
       if (Array.isArray(data.packageProducts)) setPackageProducts(data.packageProducts);
