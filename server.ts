@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import 'dotenv/config';
 import express from 'express';
 import fs from 'node:fs';
@@ -252,6 +253,33 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // Admin key auth for all API writes (mirrors worker.ts). Key comes from the ADMIN_KEY env var.
+  const PUBLIC_WRITES = new Set(['POST /api/orders', 'POST /api/customers']);
+  const hasValidAdminKey = (req: express.Request): boolean => {
+    const secret = process.env.ADMIN_KEY;
+    const provided =
+      String(req.headers['x-admin-key'] || '') ||
+      String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    return Boolean(secret && provided && provided.length === secret.length &&
+      crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret)));
+  };
+  app.use('/api', (req, res, next) => {
+    if (req.method === 'GET' || req.method === 'OPTIONS') return next();
+    if (PUBLIC_WRITES.has(`${req.method} ${req.baseUrl}${req.path}`)) return next();
+    if (!process.env.ADMIN_KEY) {
+      res.status(503).json({ error: 'Admin writes are disabled: ADMIN_KEY is not configured.' });
+      return;
+    }
+    if (!hasValidAdminKey(req)) {
+      res.status(401).json({ error: 'Unauthorized: valid admin key required.' });
+      return;
+    }
+    next();
+  });
+  app.post('/api/admin/verify', (_req, res) => {
+    res.json({ ok: true });
+  });
+
   const store = loadStore();
   const recentOrderFingerprints = new Map<string, number>();
 
@@ -261,7 +289,7 @@ async function startServer() {
       store.catalogViews += 1;
       saveStore(store);
     }
-    const isAdminRequest = req.headers['x-admin-session'] === 'authenticated';
+    const isAdminRequest = hasValidAdminKey(req);
     res.json({
       products: store.products,
       themes: store.themes,
