@@ -281,8 +281,19 @@ export default function App() {
         setMode('shop');
         return;
       }
+      const OCCASION_ALIASES: Record<string, string> = {
+        birthday: 'birthday-parties',
+        diwali: 'festivals',
+        '/festivals': 'festivals',
+        '/corporate-events': 'corporate-events',
+      };
+      if (OCCASION_ALIASES[path]) {
+        window.history.replaceState({}, '', `/occasions/${OCCASION_ALIASES[path]}`);
+        path = `/occasions/${OCCASION_ALIASES[path]}`;
+      }
       if (path.startsWith('/occasions/')) {
-        const slug = path.replace('/occasions/', '').split('/')[0].trim();
+        const rawSlug = path.replace('/occasions/', '').split('/')[0].trim();
+        const slug = OCCASION_ALIASES[rawSlug] || rawSlug;
         if (slug) {
           setSelectedOccasionSlug(slug);
           setStorefrontMode('occasion-detail');
@@ -369,6 +380,16 @@ export default function App() {
     },
     []
   );
+
+  // Product deep links (/product/SKU) are parsed before /api/state loads; resolve once products arrive
+  useEffect(() => {
+    if (!notFoundSku) return;
+    const found = products.find((p) => p.sku.toUpperCase() === notFoundSku && p.status === 'active');
+    if (found) {
+      setDetailProduct(found);
+      setNotFoundSku(null);
+    }
+  }, [products, notFoundSku]);
 
   // Parse initial URL path and listen to browser back/forward navigation
   useEffect(() => {
@@ -767,9 +788,16 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    const resp = await fetch(`/api/products/${productId}`, { method: 'DELETE' });
-    if (resp.ok) {
+    const resp = await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data) {
+      showToast(`Failed to delete product: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
+    {
       setProducts((prev) => prev.filter((p) => p.id !== productId));
+      if (Array.isArray(data.designProducts)) setDesignProducts(data.designProducts);
+      if (Array.isArray(data.packageProducts)) setPackageProducts(data.packageProducts);
       await deleteProductFromFirestore(productId).catch(() => {});
       showToast('Product deleted from storefront.');
     }
@@ -914,7 +942,11 @@ export default function App() {
 
   const handleDeleteOccasion = async (occasionId: string) => {
     const resp = await fetch(`/api/occasions/${occasionId}`, { method: 'DELETE' });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data) {
+      showToast(`Failed to delete occasion: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok && Array.isArray(data.occasions)) {
       setOccasions(data.occasions);
       await deleteOccasionFromFirestore(occasionId).catch(() => {});
@@ -944,7 +976,11 @@ export default function App() {
 
   const handleDeleteDecorationTheme = async (themeId: string) => {
     const resp = await fetch(`/api/decoration-themes/${themeId}`, { method: 'DELETE' });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data) {
+      showToast(`Failed to delete decoration theme: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok && Array.isArray(data.decorationThemes)) {
       setDecorationThemes(data.decorationThemes);
       await deleteDecorationThemeFromFirestore(themeId).catch(() => {});
@@ -981,7 +1017,11 @@ export default function App() {
 
   const handleDeleteDecorationDesign = async (designId: string) => {
     const resp = await fetch(`/api/decoration-designs/${designId}`, { method: 'DELETE' });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data) {
+      showToast(`Failed to delete design: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok) {
       if (Array.isArray(data.decorationDesigns)) setDecorationDesigns(data.decorationDesigns);
       if (Array.isArray(data.designProducts)) setDesignProducts(data.designProducts);
@@ -1019,7 +1059,11 @@ export default function App() {
 
   const handleDeletePackage = async (packageId: string) => {
     const resp = await fetch(`/api/packages/${packageId}`, { method: 'DELETE' });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data) {
+      showToast(`Failed to delete package: ${data?.error || `server returned ${resp.status}`}`);
+      return;
+    }
     if (resp.ok) {
       if (Array.isArray(data.packages)) setPackages(data.packages);
       if (Array.isArray(data.packageProducts)) setPackageProducts(data.packageProducts);
@@ -1159,12 +1203,12 @@ export default function App() {
               href="/occasions/birthday"
               onClick={(e) => {
                 e.preventDefault();
-                navigateOccasionSlug('birthday');
+                navigateOccasionSlug('birthday-parties');
               }}
               className={`hover:text-stone-950 transition-colors whitespace-nowrap shrink-0 ${
                 mode === 'shop' &&
                 storefrontMode === 'occasion-detail' &&
-                selectedOccasionSlug === 'birthday'
+                selectedOccasionSlug === 'birthday-parties'
                   ? 'text-amber-700 underline underline-offset-4'
                   : ''
               }`}
@@ -1193,12 +1237,12 @@ export default function App() {
               href="/occasions/diwali"
               onClick={(e) => {
                 e.preventDefault();
-                navigateOccasionSlug('diwali');
+                navigateOccasionSlug('festivals');
               }}
               className={`hidden xl:inline hover:text-stone-950 transition-colors whitespace-nowrap shrink-0 ${
                 mode === 'shop' &&
                 storefrontMode === 'occasion-detail' &&
-                selectedOccasionSlug === 'diwali'
+                selectedOccasionSlug === 'festivals'
                   ? 'text-amber-700 underline underline-offset-4'
                   : ''
               }`}
@@ -1336,11 +1380,11 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => navigateOccasionSlug('birthday')}
+            onClick={() => navigateOccasionSlug('birthday-parties')}
             className={`px-3 py-1 rounded-md whitespace-nowrap ${
               mode === 'shop' &&
               storefrontMode === 'occasion-detail' &&
-              selectedOccasionSlug === 'birthday'
+              selectedOccasionSlug === 'birthday-parties'
                 ? 'bg-amber-600 text-white'
                 : ''
             }`}
@@ -1362,11 +1406,11 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => navigateOccasionSlug('diwali')}
+            onClick={() => navigateOccasionSlug('festivals')}
             className={`px-3 py-1 rounded-md whitespace-nowrap ${
               mode === 'shop' &&
               storefrontMode === 'occasion-detail' &&
-              selectedOccasionSlug === 'diwali'
+              selectedOccasionSlug === 'festivals'
                 ? 'bg-amber-600 text-white'
                 : ''
             }`}

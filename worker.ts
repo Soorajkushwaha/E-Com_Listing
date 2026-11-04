@@ -306,9 +306,19 @@ async function handleRequest(request: Request, env: Env, url: URL): Promise<Resp
 
     // 4. Product Delete
     if (url.pathname.startsWith('/api/products/') && request.method === 'DELETE') {
-      const id = url.pathname.split('/').pop()!;
-      memoryStore.products = memoryStore.products.filter((p) => p.id !== id);
-      return jsonResponse({ ok: true, products: memoryStore.products });
+      const id = decodeURIComponent(url.pathname.split('/').pop()!);
+      const target = memoryStore.products.find((p) => p.id === id || p.sku.toUpperCase() === id.toUpperCase());
+      if (!target) return jsonResponse({ error: 'Product not found.' }, 404);
+      memoryStore.products = memoryStore.products.filter((p) => p.id !== target.id);
+      // Drop design/package links to the deleted product so bills of materials don't dangle
+      memoryStore.designProducts = memoryStore.designProducts.filter((m) => m.productId !== target.id);
+      memoryStore.packageProducts = memoryStore.packageProducts.filter((m) => m.productId !== target.id);
+      return jsonResponse({
+        ok: true,
+        products: memoryStore.products,
+        designProducts: memoryStore.designProducts,
+        packageProducts: memoryStore.packageProducts,
+      });
     }
 
     // 5. Themes
@@ -837,6 +847,41 @@ async function handleRequest(request: Request, env: Env, url: URL): Promise<Resp
       return jsonResponse({
         pkg: record,
         package: record,
+        packages: memoryStore.packages,
+        packageProducts: memoryStore.packageProducts,
+      });
+    }
+
+    // Decoration Theme / Design / Package deletes (persisted to KV by the fetch wrapper)
+    if (url.pathname.startsWith('/api/decoration-themes/') && request.method === 'DELETE') {
+      const id = decodeURIComponent(url.pathname.split('/').pop()!);
+      const before = memoryStore.decorationThemes.length;
+      memoryStore.decorationThemes = memoryStore.decorationThemes.filter((t) => t.id !== id && t.slug !== id);
+      if (memoryStore.decorationThemes.length === before) return jsonResponse({ error: 'Decoration theme not found.' }, 404);
+      return jsonResponse({ ok: true, decorationThemes: memoryStore.decorationThemes });
+    }
+
+    if (url.pathname.startsWith('/api/decoration-designs/') && request.method === 'DELETE') {
+      const id = decodeURIComponent(url.pathname.split('/').pop()!);
+      const target = memoryStore.decorationDesigns.find((d) => d.id === id || d.slug === id);
+      if (!target) return jsonResponse({ error: 'Decoration design not found.' }, 404);
+      memoryStore.decorationDesigns = memoryStore.decorationDesigns.filter((d) => d.id !== target.id);
+      memoryStore.designProducts = memoryStore.designProducts.filter((m) => m.designId !== target.id);
+      return jsonResponse({
+        ok: true,
+        decorationDesigns: memoryStore.decorationDesigns,
+        designProducts: memoryStore.designProducts,
+      });
+    }
+
+    if (url.pathname.startsWith('/api/packages/') && request.method === 'DELETE') {
+      const id = decodeURIComponent(url.pathname.split('/').pop()!);
+      const target = memoryStore.packages.find((p) => p.id === id || p.slug === id);
+      if (!target) return jsonResponse({ error: 'Package not found.' }, 404);
+      memoryStore.packages = memoryStore.packages.filter((p) => p.id !== target.id);
+      memoryStore.packageProducts = memoryStore.packageProducts.filter((m) => m.packageId !== target.id);
+      return jsonResponse({
+        ok: true,
         packages: memoryStore.packages,
         packageProducts: memoryStore.packageProducts,
       });

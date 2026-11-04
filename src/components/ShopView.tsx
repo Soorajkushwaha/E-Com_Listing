@@ -132,7 +132,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'in_stock'>('all');
   const [sortBy, setSortBy] = useState<'featured' | 'price_asc' | 'price_desc' | 'rating'>('featured');
-  const [maxPrice, setMaxPrice] = useState<number>(10000);
+  const [maxPriceState, setMaxPrice] = useState<number | null>(null); // null = no price limit
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
@@ -172,6 +172,12 @@ export const ShopView: React.FC<ShopViewProps> = ({
     () => products.filter((p) => p.status === 'active'),
     [products]
   );
+  // Slider ceiling follows the most expensive product (rounded up to ₹1,000), never below ₹10,000
+  const priceCeiling = useMemo(
+    () => Math.max(10000, Math.ceil(Math.max(0, ...activeProducts.map((p) => p.sellingPrice || 0)) / 1000) * 1000),
+    [activeProducts]
+  );
+  const maxPrice = maxPriceState ?? priceCeiling;
 
   const activeOccasions = useMemo(
     () =>
@@ -750,7 +756,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
                   id="camp-max-price"
                   type="range"
                   min={500}
-                  max={10000}
+                  max={priceCeiling}
                   step={250}
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
@@ -817,7 +823,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
                   setLocalSearch('');
                   setSelectedCategory('All');
                   setAvailabilityFilter('all');
-                  setMaxPrice(10000);
+                  setMaxPrice(null);
                 }}
                 className="rounded-lg bg-stone-900 px-4 py-2 text-xs font-semibold text-white hover:bg-stone-800"
               >
@@ -889,7 +895,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
                   id="shop-max-price"
                   type="range"
                   min={500}
-                  max={10000}
+                  max={priceCeiling}
                   step={250}
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
@@ -965,7 +971,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
               onClick={() => {
                 setLocalSearch('');
                 setSelectedCategory('All');
-                setMaxPrice(10000);
+                setMaxPrice(null);
               }}
               className="inline-flex items-center rounded-lg bg-stone-900 px-4 py-2 text-xs font-semibold text-white hover:bg-stone-800"
             >
