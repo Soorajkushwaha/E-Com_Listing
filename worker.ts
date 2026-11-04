@@ -38,6 +38,11 @@ export interface Env {
   OPENAI_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   XAI_API_KEY?: string;
+  /** Optional Cloudflare KV binding for persistent state (see wrangler.toml kv_namespaces). */
+  DESIDIYA_KV?: {
+    get(key: string, type: 'json'): Promise<unknown>;
+    put(key: string, value: string): Promise<void>;
+  };
 }
 
 const memoryStore: {
@@ -82,9 +87,63 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+const KV_STATE_KEY = 'state';
+// Keys that make up the persisted store (catalogViews is excluded to avoid a KV write per page view).
+const PERSISTED_KEYS = [
+  'products', 'themes', 'campaigns', 'occasions', 'decorationThemes', 'decorationDesigns',
+  'designProducts', 'packages', 'packageProducts', 'bulkOrders', 'customers',
+  'activeThemeId', 'previousThemeId',
+] as const;
+
+async function loadStateFromKv(env: Env): Promise<void> {
+  if (!env.DESIDIYA_KV) return; // No binding: keep in-memory seed state
+  try {
+    const saved = (await env.DESIDIYA_KV.get(KV_STATE_KEY, 'json')) as Record<string, unknown> | null;
+    if (!saved || typeof saved !== 'object') return; // Nothing saved yet: keep seed
+    for (const key of PERSISTED_KEYS) {
+      if (key in saved && saved[key] !== undefined) {
+        (memoryStore as Record<string, unknown>)[key] = saved[key];
+      }
+    }
+  } catch (err) {
+    console.error('KV load failed, using in-memory state', err);
+  }
+}
+
+async function saveStateToKv(env: Env): Promise<void> {
+  if (!env.DESIDIYA_KV) return;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of PERSISTED_KEYS) snapshot[key] = memoryStore[key];
+  await env.DESIDIYA_KV.put(KV_STATE_KEY, JSON.stringify(snapshot));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const isApi = url.pathname.startsWith('/api/');
+    const isMutation = isApi && ['POST', 'PUT', 'DELETE'].includes(request.method);
+
+    if (isApi && request.method !== 'OPTIONS') {
+      await loadStateFromKv(env);
+    }
+
+    const response = await handleRequest(request, env, url);
+
+    // Persist only after successful mutations (KV free tier: 1,000 writes/day)
+    if (isMutation && response.ok && env.DESIDIYA_KV) {
+      try {
+        await saveStateToKv(env);
+      } catch (err) {
+        console.error('KV save failed', err);
+        return jsonResponse({ error: 'Saved in memory but failed to persist. Please retry.' }, 503);
+      }
+    }
+    return response;
+  },
+};
+
+async function handleRequest(request: Request, env: Env, url: URL): Promise<Response> {
+  {
 
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -796,5 +855,5 @@ export default {
     }
 
     return new Response('DesiDiya — Lighting Up Every Celebration Worker API Active', { status: 200 });
-  },
-};
+  }
+}
