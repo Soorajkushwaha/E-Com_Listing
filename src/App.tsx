@@ -135,6 +135,34 @@ export default function App() {
     }, 3500);
   }, []);
 
+  // Attach the admin key (entered at /admin login, kept in sessionStorage) to API writes and the
+  // admin state read, and surface 401s as a toast instead of failing silently.
+  useEffect(() => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      const path = new URL(urlStr, window.location.origin);
+      const isOwnApi = path.origin === window.location.origin && path.pathname.startsWith('/api/');
+      const adminKey = sessionStorage.getItem('cmp_admin_key');
+      if (isOwnApi && adminKey && (method !== 'GET' || path.pathname === '/api/state')) {
+        const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+        if (!headers.has('X-Admin-Key')) headers.set('X-Admin-Key', adminKey);
+        init = { ...init, headers };
+      }
+      const resp = await originalFetch(input, init);
+      if (isOwnApi && method !== 'GET' && resp.status === 401 && path.pathname !== '/api/admin/verify') {
+        showToast('Not authorized: sign in to /admin with the admin access key to save changes.');
+      } else if (isOwnApi && method !== 'GET' && resp.status === 503) {
+        resp.clone().json().then((d) => d?.error && showToast(String(d.error))).catch(() => {});
+      }
+      return resp;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [showToast]);
+
   // Merge Firestore products with API products without losing any imported SKUs
   const mergeProductCatalogs = useCallback((baseProducts: Product[], extraProducts: Product[]): Product[] => {
     const bySku = new Map<string, Product>();
@@ -159,7 +187,7 @@ export default function App() {
       let apiProducts: Product[] = [];
       try {
         const resp = await fetch(`/api/state${trackView ? '?trackView=1' : ''}`, {
-          headers: adminAuth ? { 'X-Admin-Session': 'authenticated' } : {},
+          headers: {},
         });
         if (resp.ok) {
           const data = await resp.json();
@@ -1557,22 +1585,30 @@ export default function App() {
               if (user.email) sessionStorage.setItem('cmp_admin_email', user.email);
               await fetchAppState(false, true);
             }}
-            onSignInDemoAdmin={(passcode) => {
-              if (passcode.trim() === 'ADMIN-2026') {
-                setIsAdminAuthenticated(true);
-                setAdminEmail(ADMIN_BOOTSTRAPPED_EMAIL);
-                sessionStorage.setItem('cmp_admin_auth', '1');
-                sessionStorage.setItem('cmp_admin_email', ADMIN_BOOTSTRAPPED_EMAIL);
-                fetchAppState(false, true);
-                return true;
-              }
-              return false;
+            onSignInDemoAdmin={async (passcode) => {
+              const key = passcode.trim();
+              if (!key) return false;
+              // Verified server-side against the ADMIN_KEY worker secret; never checked in the bundle
+              const resp = await fetch('/api/admin/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key },
+                body: '{}',
+              }).catch(() => null);
+              if (!resp || !resp.ok) return false;
+              sessionStorage.setItem('cmp_admin_key', key);
+              setIsAdminAuthenticated(true);
+              setAdminEmail(ADMIN_BOOTSTRAPPED_EMAIL);
+              sessionStorage.setItem('cmp_admin_auth', '1');
+              sessionStorage.setItem('cmp_admin_email', ADMIN_BOOTSTRAPPED_EMAIL);
+              fetchAppState(false, true);
+              return true;
             }}
             onSignOut={async () => {
               await signOutAdmin().catch(() => {});
               setIsAdminAuthenticated(false);
               setAdminEmail(null);
               sessionStorage.removeItem('cmp_admin_auth');
+              sessionStorage.removeItem('cmp_admin_key');
               sessionStorage.removeItem('cmp_admin_email');
             }}
             activeSection={adminSection}

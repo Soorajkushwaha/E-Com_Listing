@@ -38,6 +38,8 @@ export interface Env {
   OPENAI_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   XAI_API_KEY?: string;
+  /** Worker secret holding the admin access key (set with `wrangler secret put ADMIN_KEY`). */
+  ADMIN_KEY?: string;
   /** Optional Cloudflare KV binding for persistent state (see wrangler.toml kv_namespaces). */
   DESIDIYA_KV?: {
     get(key: string, type: 'json'): Promise<unknown>;
@@ -117,11 +119,49 @@ async function saveStateToKv(env: Env): Promise<void> {
   await env.DESIDIYA_KV.put(KV_STATE_KEY, JSON.stringify(snapshot));
 }
 
+// Customer-facing write routes that must stay public (bulk inquiry submit, customer profile sync on sign-in)
+const PUBLIC_WRITE_ROUTES: Array<{ method: string; path: string }> = [
+  { method: 'POST', path: '/api/orders' },
+  { method: 'POST', path: '/api/customers' },
+];
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  let diff = ab.length ^ bb.length;
+  const len = Math.max(ab.length, bb.length);
+  for (let i = 0; i < len; i++) diff |= (ab[i % (ab.length || 1)] ?? 0) ^ (bb[i % (bb.length || 1)] ?? 0);
+  return diff === 0;
+}
+
+/** Returns 'ok' when the request carries the valid admin key, 'missing-secret' if the worker has no ADMIN_KEY. */
+function checkAdminKey(request: Request, env: Env): 'ok' | 'denied' | 'missing-secret' {
+  const secret = env.ADMIN_KEY;
+  if (!secret) return 'missing-secret';
+  const header = request.headers.get('x-admin-key') || '';
+  const bearer = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const provided = header || bearer;
+  return provided && timingSafeEqual(provided, secret) ? 'ok' : 'denied';
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const isApi = url.pathname.startsWith('/api/');
-    const isMutation = isApi && ['POST', 'PUT', 'DELETE'].includes(request.method);
+    const isMutation = isApi && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
+
+    // Admin key check: every write under /api except the public customer routes
+    const isPublicWrite = PUBLIC_WRITE_ROUTES.some((r) => r.method === request.method && r.path === url.pathname);
+    if ((isMutation || request.method === 'PATCH') && isApi && !isPublicWrite) {
+      const auth = checkAdminKey(request, env);
+      if (auth === 'missing-secret') {
+        return jsonResponse({ error: 'Admin writes are disabled: ADMIN_KEY secret is not configured on the worker.' }, 503);
+      }
+      if (auth !== 'ok') {
+        return jsonResponse({ error: 'Unauthorized: valid admin key required.' }, 401);
+      }
+    }
 
     if (isApi && request.method !== 'OPTIONS') {
       await loadStateFromKv(env);
@@ -149,10 +189,15 @@ async function handleRequest(request: Request, env: Env, url: URL): Promise<Resp
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Session',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Session, X-Admin-Key',
         },
       });
+    }
+
+    // Admin key verification for the /admin login form (auth already enforced in the fetch wrapper)
+    if (url.pathname === '/api/admin/verify' && request.method === 'POST') {
+      return jsonResponse({ ok: true });
     }
 
     // 1. Shared Storefront & Admin State
@@ -160,7 +205,7 @@ async function handleRequest(request: Request, env: Env, url: URL): Promise<Resp
       if (url.searchParams.get('trackView') === '1') {
         memoryStore.catalogViews += 1;
       }
-      const isAdmin = request.headers.get('x-admin-session') === 'authenticated';
+      const isAdmin = checkAdminKey(request, env) === 'ok'; // private order/customer data needs the admin key
       return jsonResponse({
         ...memoryStore,
         bulkOrders: isAdmin ? memoryStore.bulkOrders : [],

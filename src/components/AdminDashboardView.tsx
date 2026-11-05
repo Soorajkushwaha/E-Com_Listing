@@ -85,7 +85,7 @@ interface AdminDashboardViewProps {
   isAuthenticated: boolean;
   adminEmail: string | null;
   onSignInGoogle: () => Promise<void>;
-  onSignInDemoAdmin: (passcode: string) => boolean;
+  onSignInDemoAdmin: (passcode: string) => Promise<boolean>;
   onSignOut: () => Promise<void>;
   activeSection: AdminSection;
   onSelectSection: (sec: AdminSection) => void;
@@ -187,7 +187,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onOpenPublicDesign,
   onOpenBulkOrderModal,
 }) => {
-  const [passcodeInput, setPasscodeInput] = useState('ADMIN-2026');
+  const [passcodeInput, setPasscodeInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [dateRange, setDateRange] = useState<'today' | '7d' | '30d' | 'all'>('all');
 
@@ -578,10 +578,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </div>
 
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              const ok = onSignInDemoAdmin(passcodeInput);
-              if (!ok) setAuthError('Invalid admin passcode. Default is ADMIN-2026.');
+              const ok = await onSignInDemoAdmin(passcodeInput);
+              if (!ok) setAuthError('Invalid admin access key.');
             }}
             className="space-y-3"
           >
