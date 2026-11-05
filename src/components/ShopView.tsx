@@ -1140,6 +1140,10 @@ export const ShopView: React.FC<ShopViewProps> = ({
                   brand: 'Shoppable Decoration Scene',
                   category: 'DesiDiya',
                   imageUrl:
+                    // Prefer a real hero banner set on the hero campaign; skip generated SVG placeholders
+                    (heroCampaign?.bannerImageUrl && !heroCampaign.bannerImageUrl.startsWith('data:image/svg')
+                      ? heroCampaign.bannerImageUrl
+                      : '') ||
                     publishedDesigns[0]?.mainImage ||
                     heroCampaign?.bannerImageUrl ||
                     activeProducts[0]?.imageUrl ||
